@@ -1,0 +1,2195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Bowling Game</title>
+	<style>body{margin:0;overflow:hidden;font-family:sans-serif}canvas{display:block;width:100vw;height:100vh;outline:none;touch-action:none}#welcome-message{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 15px;border-radius:5px;font-size:1.2em;text-align:center;z-index:10;pointer-events:none}#score{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 15px;border-radius:5px;font-size:1.2em;z-index:10;pointer-events:none}#click-indicator{position:absolute;top:10px;right:10px;width:30px;height:30px;background-color:gray;border-radius:5px;z-index:100;transition:background-color .1s;pointer-events:none}#game-controls{position:absolute;bottom:10px;left:10px;z-index:10}#menuButton{background-color:#007bff;color:#fff;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:1em;box-shadow:0 4px 6px rgba(0,0,0,0.1);transition:background-color .3s ease,transform .1s ease}#menuButton:hover{background-color:#0056b3;transform:translateY(-2px)}#menuButton:active{transform:translateY(0);box-shadow:0 2px 4px rgba(0,0,0,0.1)}#gameMenu{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:20;transition:opacity .3s ease;opacity:0;visibility:hidden}#gameMenu.active{opacity:1;visibility:visible}#gameMenu button{background-color:#4CAF50;color:#fff;padding:15px 30px;border:none;border-radius:10px;cursor:pointer;font-size:1.5em;margin:10px;width:80%;max-width:300px;box-shadow:0 6px 8px rgba(0,0,0,0.2);transition:background-color .3s ease,transform .1s ease}#gameMenu button:hover{background-color:#45a049;transform:translateY(-2px)}#gameMenu button:active{transform:translateY(0);box-shadow:0 3px 5px rgba(0,0,0,0.2)}#gameMenu #closeMenuButton{background-color:#dc3545}#gameMenu #closeMenuButton:hover{background-color:#c82333}</style>
+	
+</head>
+<body>
+
+<div id="welcome-message">
+Welcome!
+</div>
+<div id="score">Skittles Down: 0</div>
+<div id="click-indicator"></div>
+<div id="game-controls">
+<button id="menuButton">Menu</button>
+</div>
+<div id="gameMenu">
+<button id="howToPlayButton">How to Play</button>
+<div class="slider-container">
+<label for="rampDistanceSlider">Far Ramp Distance:</label>
+<input type="range" id="rampDistanceSlider" min="0" max="100" value="50">
+<span id="rampDistanceValue">50</span>
+</div>
+<button id="toggleRampsButton">Toggle Ramps</button>
+<button id="resetGameMenuButton">Reset Game</button>
+<button id="aboutButton">About</button>
+<button id="closeMenuButton">Close Menu</button>
+</div>
+<div id="howToPlayModal">
+<div id="howToPlayContent">
+<h3>How to Play</h3>
+<p>
+<strong>Throwing the Ball:</strong>
+<br>
+**Mouse/Touchpad:** Left-click and drag anywhere on the lane to pick up the ball. Drag your mouse/finger to aim and set the power, then release to throw. A faster, longer drag forward will result in a more powerful throw.
+<br>
+**Mobile Touch:** Single-tap and drag anywhere on the lane to pick up the ball. Drag your finger to aim and set the power, then release to throw. A faster, longer drag forward will result in a more powerful throw.
+</p>
+<p>
+<strong>Camera Controls:</strong>
+<br>
+**Mouse/Touchpad:** Right-click and drag to rotate the camera. Scroll to zoom in/out.
+<br>
+**Mobile Touch:** Use two fingers to drag and rotate the camera. Pinch to zoom in/out.
+</p>
+<p>
+<strong>Keyboard Controls:</strong>
+<ul>
+<li>**Spacebar:** Reset the ball and skittles to their starting positions.</li>
+<li>**Up Arrow (&#8593;):** Throw the ball forward from its current position.</li>
+<li>**Left Arrow (&#8592;):** Nudge the ball slightly to the left.</li>
+<li>**Right Arrow (&#8594;):** Nudge the ball slightly to the right.</li>
+</ul>
+</p>
+<button id="closeHowToPlayButton">Got It!</button>
+</div>
+</div>
+<div id="aboutModal">
+<div id="aboutContent">
+<h3>About This Game</h3>
+<p>
+This is a simple 3D bowling game built using Three.js for rendering and Cannon.js for physics simulation.
+<br><br>
+It was developed by Gemini AI as a demonstration of interactive web-based 3D applications.
+<br><br>
+Enjoy knocking down some skittles!
+</p>
+<button id="closeAboutButton">Close</button>
+</div>
+</div>
+
+<canvas id="gameCanvas" tabindex="0"></canvas>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script><script>
+console.log("Script Started! (Using DOMContentLoaded)");
+let scene, camera, renderer, orbitControls, world, ballMesh, ballBody, skittleMeshes = [], skittleBodies = [], laneMesh, laneBody, groundMesh, groundBody, farRampMeshes = [], farRampBodies = [], closeRampMeshes = [], closeRampBodies = [];
+let rampsVisible = true, farRampZ = -50, mousePosition = new THREE.Vector2(), raycaster = new THREE.Raycaster(), draggingBall = false, dragStartTime, dragStartMousePosition = new THREE.Vector2(), initialBallPosition = new THREE.Vector3(0, 0.5, 8), skittlesDownCount = 0;
+let gameCanvas, clickIndicator, menuButton, gameMenu, closeMenuButton, howToPlayButton, toggleRampsButton, resetGameMenuButton, aboutButton, howToPlayModal, closeHowToPlayButton, aboutModal, closeAboutButton, rampDistanceSlider, rampDistanceValueDisplay;
+const SKITTLE_HEIGHT = 1.0, SKITTLE_RADIUS_TOP = 0.08, SKITTLE_RADIUS_BOTTOM = 0.12;
+let initialized = false;
+
+// New variable to hold the RockManager instance
+let rockManager;
+
+// Function Aliases for Menu and Modals
+function toggleMenu() { gameMenu.classList.toggle('active'); }
+function showHowToPlay() { howToPlayModal.classList.add('active'); gameMenu.classList.remove('active'); }
+function hideHowToPlay() { howToPlayModal.classList.remove('active'); }
+function showAbout() { aboutModal.classList.add('active'); gameMenu.classList.remove('active'); }
+function hideAbout() { aboutModal.classList.remove('active'); }
+
+// Function to Toggle Ramps Visibility
+function toggleRampsVisibility() {
+	rampsVisible = !rampsVisible;
+	farRampMeshes.forEach(mesh => { mesh.visible = rampsVisible; });
+	farRampBodies.forEach(body => { body.collisionResponse = rampsVisible; if (!rampsVisible) body.sleep(); else body.wakeUp(); });
+	closeRampMeshes.forEach(mesh => { mesh.visible = rampsVisible; });
+	closeRampBodies.forEach(body => { body.collisionResponse = rampsVisible; if (!rampsVisible) body.sleep(); else body.wakeUp(); });
+	console.log(`Ramps visibility: ${rampsVisible ? 'ON' : 'OFF'}`);
+}
+
+// Function to Reset Ball and Skittles
+function resetBallAndSkittles() {
+	console.log("Resetting ball and skittles...");
+	ballBody.position.copy(initialBallPosition); ballMesh.position.copy(initialBallPosition);
+	ballBody.velocity.set(0, 0, 0); ballBody.angularVelocity.set(0, 0, 0);
+	ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false;
+	draggingBall = false; orbitControls.enabled = true;
+	const skittleZStart = -8, skittleRowSpacing = 0.5, skittleColumnSpacing = 0.5, tableHeight = 0.2;
+	const skittlePositions = [
+		{ x: 0, z: skittleZStart }, { x: -skittleColumnSpacing / 2, z: skittleZStart - skittleRowSpacing }, { x: skittleColumnSpacing / 2, z: skittleZStart - skittleRowSpacing },
+		{ x: -skittleColumnSpacing, z: skittleZStart - skittleRowSpacing * 2 }, { x: 0, z: skittleZStart - skittleRowSpacing * 2 }, { x: skittleColumnSpacing, z: skittleZStart - skittleRowSpacing * 2 },
+		{ x: -skittleColumnSpacing * 1.5, z: skittleZStart - skittleRowSpacing * 3 }, { x: -skittleColumnSpacing * 0.5, z: skittleZStart - skittleRowSpacing * 3 },
+		{ x: skittleColumnSpacing * 0.5, z: skittleZStart - skittleRowSpacing * 3 }, { x: skittleColumnSpacing * 1.5, z: skittleZStart - skittleRowSpacing * 3 }
+	];
+	skittleBodies.forEach((body, i) => {
+		const pos = skittlePositions[i];
+		body.position.set(pos.x, tableHeight + SKITTLE_HEIGHT / 2, pos.z);
+		body.quaternion.set(0, 0, 0, 1);
+		body.velocity.set(0, 0, 0); body.angularVelocity.set(0, 0, 0); body.sleep();
+	});
+	skittleMeshes.forEach((mesh, i) => {
+		const pos = skittlePositions[i];
+		mesh.position.set(pos.x, tableHeight + SKITTLE_HEIGHT / 2, pos.z); mesh.rotation.set(0, 0, 0);
+	});
+	skittlesDownCount = 0; document.getElementById('score').innerText = `Skittles Down: ${skittlesDownCount}`;
+}
+
+// Function to Check Skittles Down
+function checkSkittlesDown() {
+	let fallenCount = 0, threshold = Math.cos(Math.PI / 4);
+	skittleBodies.forEach(body => {
+		const upVector = new CANNON.Vec3(0, 1, 0), currentUp = body.quaternion.vmult(upVector);
+		if (currentUp.dot(upVector) < threshold) fallenCount++;
+	});
+	if (fallenCount !== skittlesDownCount) {
+		skittlesDownCount = fallenCount;
+		document.getElementById('score').innerText = `Skittles Down: ${skittlesDownCount}`;
+	}
+}
+
+// Function to Handle Window Resize
+function onWindowResize() {
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Function to Handle Pointer Down (Mouse/Touch)
+function onPointerDown(event) {
+	const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+	const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+	const button = event.touches ? 0 : event.button;
+
+	if (clickIndicator) { clickIndicator.style.backgroundColor = 'red'; setTimeout(() => { clickIndicator.style.backgroundColor = 'gray'; }, 100); }
+	if (event.target !== gameCanvas) return;
+
+	if (button === 2 || (event.touches && event.touches.length > 1)) event.preventDefault(); // Prevent context menu on right click or two-finger touch
+
+	mousePosition.x = (clientX / window.innerWidth) * 2 - 1;
+	mousePosition.y = -(clientY / window.innerHeight) * 2 + 1;
+
+	if (button === 0) { // Left click or single touch
+		draggingBall = true; orbitControls.enabled = false;
+		dragStartTime = performance.now(); dragStartMousePosition.copy(mousePosition);
+		ballBody.position.copy(initialBallPosition); ballMesh.position.copy(initialBallPosition);
+		ballBody.velocity.set(0, 0, 0); ballBody.angularVelocity.set(0, 0, 0);
+		ballBody.type = CANNON.Body.KINEMATIC; ballBody.allowSleep = false;
+	} else if (button === 2 || (event.touches && event.touches.length > 1)) { // Right click or two-finger touch
+		draggingBall = false; orbitControls.enabled = true;
+	}
+	event.preventDefault();
+}
+
+// Function to Handle Pointer Move (Mouse/Touch)
+function onPointerMove(event) {
+	const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+	const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+
+	mousePosition.x = (clientX / window.innerWidth) * 2 - 1;
+	mousePosition.y = -(clientY / window.innerHeight) * 2 + 1;
+
+	if (draggingBall) {
+		raycaster.setFromCamera(mousePosition, camera);
+		const planeY = laneMesh.position.y + (ballMesh.geometry.parameters.radius || 0.25);
+		const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+		const intersectPoint = new THREE.Vector3();
+		raycaster.ray.intersectPlane(interactionPlane, intersectPoint);
+		if (intersectPoint) { ballMesh.position.copy(intersectPoint); ballBody.position.copy(intersectPoint); }
+	}
+	event.preventDefault();
+}
+
+// Function to Handle Pointer Up (Mouse/Touch)
+function onPointerUp(event) {
+	const clientX = event.changedTouches ? event.changedTouches[0].clientX : event.clientX;
+	const clientY = event.changedTouches ? event.changedTouches[0].clientY : event.clientY;
+	const button = event.changedTouches ? 0 : event.button;
+
+	if (clickIndicator) { clickIndicator.style.backgroundColor = 'blue'; setTimeout(() => { clickIndicator.style.backgroundColor = 'gray'; }, 100); }
+	if (event.target !== gameCanvas) return;
+
+	if (button === 0 && draggingBall) {
+		draggingBall = false; orbitControls.enabled = true; ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false;
+		const dragEndTime = performance.now(), dragDuration = dragEndTime - dragStartTime;
+		const dragEndMousePosition = new THREE.Vector2((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+		const dragVector = new THREE.Vector2().subVectors(dragEndMousePosition, dragStartMousePosition);
+		const dragVelocityMagnitude = dragVector.length() / (Math.max(1, dragDuration) / 1000);
+		const horizontalForceScale = 10;
+		let forwardForceScale = 40;
+		if (!event.touches || event.touches.length === 0) { forwardForceScale = 70; } // Adjust for mouse vs touch sensitivity
+		const impulse = new CANNON.Vec3(dragVector.x * horizontalForceScale * dragVelocityMagnitude, 0, -dragVector.y * forwardForceScale * dragVelocityMagnitude);
+		ballBody.applyImpulse(impulse, ballBody.position);
+	} else if (button === 2 || (event.touches && event.touches.length > 1)) {
+		orbitControls.enabled = true;
+	}
+	event.preventDefault();
+}
+
+// Function to Handle Keyboard Input
+function onKeyDown(event) {
+	const nudgeForce = 0.05, throwForce = 150;
+	switch (event.code) {
+		case 'Space': resetBallAndSkittles(); break;
+		case 'ArrowUp': ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false; ballBody.applyImpulse(new CANNON.Vec3(0, 0, -throwForce), ballBody.position); break;
+		case 'ArrowLeft': ballBody.applyImpulse(new CANNON.Vec3(-nudgeForce, 0, 0), ballBody.position); break;
+		case 'ArrowRight': ballBody.applyImpulse(new CANNON.Vec3(nudgeForce, 0, 0), ballBody.position); break;
+	}
+}
+
+// Function to Create Far Ramp
+function createFarRamp(width, height, depth, x, y, z, rotationX, rotationY) {
+	const geometry = new THREE.BoxGeometry(width, height, depth), material = new THREE.MeshStandardMaterial({ color: 0x663300 });
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.position.set(x, y + height / 2, z); mesh.rotation.x = rotationX; mesh.rotation.y = rotationY; mesh.castShadow = true; mesh.receiveShadow = true;
+	scene.add(mesh); farRampMeshes.push(mesh);
+	const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+	const body = new CANNON.Body({ mass: 0, material: new CANNON.Material("rampMaterial") });
+	body.addShape(shape); body.position.copy(mesh.position);
+	const quaternion = new CANNON.Quaternion(); quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+	body.quaternion.copy(quaternion); world.addBody(body); farRampBodies.push(body);
+}
+
+// Function to Create Close Ramp
+function createCloseRamp(width, height, depth, x, y, z, rotationX, rotationY) {
+	const geometry = new THREE.BoxGeometry(width, height, depth), material = new THREE.MeshStandardMaterial({ color: 0x4B0082 });
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.position.set(x, y + height / 2, z); mesh.rotation.x = rotationX; mesh.rotation.y = rotationY; mesh.castShadow = true; mesh.receiveShadow = true;
+	scene.add(mesh); closeRampMeshes.push(mesh);
+	const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+	const body = new CANNON.Body({ mass: 0, material: new CANNON.Material("rampMaterial") });
+	body.addShape(shape); body.position.copy(mesh.position);
+	const quaternion = new CANNON.Quaternion(); quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+	body.quaternion.copy(quaternion); world.addBody(body); closeRampBodies.push(body);
+}
+
+// Function to Update Far Ramp Z Position
+function updateFarRampZ() {
+	const minZ = -80, maxZ = -30;
+	farRampZ = minZ + (rampDistanceSlider.value / 100) * (maxZ - minZ);
+	rampDistanceValueDisplay.innerText = rampDistanceSlider.value;
+	farRampMeshes.forEach((mesh, i) => {
+		const originalRelativeZ = mesh.userData.originalRelativeZ || (mesh.position.z - farRampZ);
+		if (!mesh.userData.originalRelativeZ) mesh.userData.originalRelativeZ = mesh.position.z - farRampZ;
+		const newZ = farRampZ + originalRelativeZ;
+		mesh.position.z = newZ; farRampBodies[i].position.z = newZ;
+	});
+}
+
+// RockManager Class Definition
+class RockManager {
+    constructor(scene, world, camera, initialSpawnZ, spawnDistance, removalDistance, numRocks) {
+        this.scene = scene;
+        this.world = world;
+        this.camera = camera;
+        this.initialSpawnZ = initialSpawnZ;
+        this.spawnDistance = spawnDistance;
+        this.removalDistance = removalDistance;
+        this.rocks = [];
+        this.lastCameraZ = camera.position.z;
+
+        // Create a material for the rocks
+        this.rockMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 }); // Dark grey for rocks
+        this.rockPhysicsMaterial = new CANNON.Material("rockMaterial");
+
+        // Initial population of rocks
+        for (let i = 0; i < numRocks; i++) {
+            this.createRandomRock(this.initialSpawnZ + Math.random() * spawnDistance);
+        }
+    }
+
+    createRandomRock(zPos) {
+        const type = Math.random();
+        let geometry, shape;
+        const scale = Math.random() * 0.8 + 0.5; // Random scale for variety
+        const height = scale * (Math.random() * 1.5 + 1); // Varied height for pyramids/ramps
+
+        if (type < 0.5) { // 50% chance for a ramp
+            // Ramp (rotated box)
+            const width = scale * 2;
+            const depth = scale * 2;
+            geometry = new THREE.BoxGeometry(width, height * 0.5, depth); // Flatter box for ramp
+            shape = new CANNON.Box(new CANNON.Vec3(width / 2, height * 0.25, depth / 2)); // Physics shape for ramp
+
+            const mesh = new THREE.Mesh(geometry, this.rockMaterial);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            this.scene.add(mesh);
+
+            const body = new CANNON.Body({
+                mass: 0, // Static
+                material: this.rockPhysicsMaterial,
+                collisionResponse: true
+            });
+            body.addShape(shape);
+            this.world.addBody(body);
+
+            // Position and rotate the ramp
+            const xPos = (Math.random() - 0.5) * 80;
+            mesh.position.set(xPos, -0.5 + height * 0.25, zPos); // Adjust Y for half height
+            body.position.copy(mesh.position);
+
+            const rotationX = (Math.random() * Math.PI / 6) * (Math.random() > 0.5 ? 1 : -1); // Small random tilt
+            const rotationY = Math.random() * Math.PI * 2; // Random yaw
+            mesh.rotation.set(rotationX, rotationY, 0);
+            const quaternion = new CANNON.Quaternion();
+            quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+            body.quaternion.copy(quaternion);
+
+            this.rocks.push({ mesh, body, initialRelativeZ: zPos - this.camera.position.z });
+
+        } else { // 50% chance for a pyramid
+            // Pyramid (cone with 4 segments)
+            const radius = scale * 1.2; // Base radius
+            geometry = new THREE.ConeGeometry(radius, height, 4); // 4 segments for a square pyramid
+            shape = new CANNON.Cylinder(0.001, radius, height, 4); // Cannon.js cylinder for pyramid approximation (top radius almost zero)
+
+            const mesh = new THREE.Mesh(geometry, this.rockMaterial);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            this.scene.add(mesh);
+
+            const body = new CANNON.Body({
+                mass: 0, // Static
+                material: this.rockPhysicsMaterial,
+                collisionResponse: true
+            });
+            // Cannon.js Cylinder's axis is Y by default, Three.js Cone's axis is Y.
+            // No need to rotate Cannon.js body if it's aligned with Three.js mesh.
+            body.addShape(shape);
+            this.world.addBody(body);
+
+            // Position the pyramid
+            const xPos = (Math.random() - 0.5) * 80;
+            mesh.position.set(xPos, -0.5 + height / 2, zPos); // Adjust Y for half height
+            body.position.copy(mesh.position);
+
+            const rotationY = Math.random() * Math.PI * 2; // Random yaw
+            mesh.rotation.set(0, rotationY, 0);
+            const quaternion = new CANNON.Quaternion();
+            quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+            body.quaternion.copy(quaternion);
+
+            this.rocks.push({ mesh, body, initialRelativeZ: zPos - this.camera.position.z });
+        }
+    }
+
+    update() {
+        const cameraZ = this.camera.position.z;
+
+        // Check for rocks to recycle/reposition
+        this.rocks.forEach(rock => {
+            if (rock.mesh.position.z > cameraZ + this.removalDistance) {
+                // Reposition the rock far ahead of the current camera position
+                const newZ = cameraZ - this.spawnDistance - (Math.random() * this.spawnDistance * 0.5);
+                const newX = (Math.random() - 0.5) * 80; // Increased horizontal spread for recycled rocks too
+
+                // Randomly choose between ramp or pyramid for the recycled rock
+                const type = Math.random();
+                let geometry, shape;
+                const scale = Math.random() * 0.8 + 0.5;
+                const height = scale * (Math.random() * 1.5 + 1);
+
+                if (type < 0.5) { // Ramp
+                    const width = scale * 2;
+                    const depth = scale * 2;
+                    geometry = new THREE.BoxGeometry(width, height * 0.5, depth);
+                    shape = new CANNON.Box(new CANNON.Vec3(width / 2, height * 0.25, depth / 2));
+                    rock.mesh.geometry.dispose(); // Dispose old geometry
+                    rock.mesh.geometry = geometry;
+                    rock.body.removeShape(rock.body.shapes[0]); // Remove old physics shape
+                    rock.body.addShape(shape);
+
+                    rock.mesh.position.set(newX, -0.5 + height * 0.25, newZ);
+                    const rotationX = (Math.random() * Math.PI / 6) * (Math.random() > 0.5 ? 1 : -1);
+                    const rotationY = Math.random() * Math.PI * 2;
+                    rock.mesh.rotation.set(rotationX, rotationY, 0);
+                    const quaternion = new CANNON.Quaternion();
+                    quaternion.setFromEuler(rock.mesh.rotation.x, rock.mesh.rotation.y, rock.mesh.rotation.z, 'XYZ');
+                    rock.body.quaternion.copy(quaternion);
+
+                } else { // Pyramid
+                    const radius = scale * 1.2;
+                    geometry = new THREE.ConeGeometry(radius, height, 4);
+                    shape = new CANNON.Cylinder(0.001, radius, height, 4);
+                    rock.mesh.geometry.dispose(); // Dispose old geometry
+                    rock.mesh.geometry = geometry;
+                    rock.body.removeShape(rock.body.shapes[0]); // Remove old physics shape
+                    rock.body.addShape(shape);
+
+                    rock.mesh.position.set(newX, -0.5 + height / 2, newZ);
+                    const rotationY = Math.random() * Math.PI * 2;
+                    rock.mesh.rotation.set(0, rotationY, 0);
+                    const quaternion = new CANNON.Quaternion();
+                    quaternion.setFromEuler(rock.mesh.rotation.x, rock.mesh.rotation.y, rock.mesh.rotation.z, 'XYZ');
+                    rock.body.quaternion.copy(quaternion);
+                }
+
+                rock.body.position.copy(rock.mesh.position);
+                rock.body.velocity.set(0, 0, 0);
+                rock.body.angularVelocity.set(0, 0, 0);
+                rock.body.sleep(); // Put to sleep until hit
+            }
+        });
+
+        this.lastCameraZ = cameraZ;
+    }
+}
+
+
+// Function for Game Initialization
+function initializeGame() {
+	try {
+		if (initialized) return; initialized = true;
+
+		// Get DOM elements
+		gameCanvas = document.getElementById('gameCanvas');
+		clickIndicator = document.getElementById('click-indicator');
+		menuButton = document.getElementById('menuButton');
+		gameMenu = document.getElementById('gameMenu');
+		closeMenuButton = document.getElementById('closeMenuButton');
+		howToPlayButton = document.getElementById('howToPlayButton');
+		toggleRampsButton = document.getElementById('toggleRampsButton');
+		resetGameMenuButton = document.getElementById('resetGameMenuButton');
+		aboutButton = document.getElementById('aboutButton');
+		howToPlayModal = document.getElementById('howToPlayModal');
+		closeHowToPlayButton = document.getElementById('closeHowToPlayButton');
+		aboutModal = document.getElementById('aboutModal');
+		closeAboutButton = document.getElementById('closeAboutButton');
+		rampDistanceSlider = document.getElementById('rampDistanceSlider');
+		rampDistanceValueDisplay = document.getElementById('rampDistanceValue');
+
+		// Add event listeners
+		if (menuButton) menuButton.addEventListener('click', toggleMenu, false);
+		if (closeMenuButton) closeMenuButton.addEventListener('click', toggleMenu, false);
+		if (howToPlayButton) howToPlayButton.addEventListener('click', showHowToPlay, false);
+		if (closeHowToPlayButton) closeHowToPlayButton.addEventListener('click', hideHowToPlay, false);
+		if (toggleRampsButton) toggleRampsButton.addEventListener('click', toggleRampsVisibility, false);
+		if (resetGameMenuButton) resetGameMenuButton.addEventListener('click', () => { resetBallAndSkittles(); toggleMenu(); }, false);
+		if (aboutButton) aboutButton.addEventListener('click', showAbout, false);
+		if (closeAboutButton) closeAboutButton.addEventListener('click', hideAbout, false);
+		if (rampDistanceSlider) { rampDistanceSlider.addEventListener('input', updateFarRampZ, false); rampDistanceSlider.value = 50; rampDistanceValueDisplay.innerText = rampDistanceSlider.value; }
+
+		gameCanvas.focus();
+
+		// Three.js Scene Setup
+		scene = new THREE.Scene(); scene.background = new THREE.Color(0x87ceeb);
+		camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); camera.position.set(0, 5, 15);
+		renderer = new THREE.WebGLRenderer({ antialias: true, canvas: gameCanvas }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true;
+
+		// Input Event Listeners for Game Canvas
+		gameCanvas.addEventListener('mousedown', onPointerDown, false);
+		gameCanvas.addEventListener('mousemove', onPointerMove, false);
+		gameCanvas.addEventListener('mouseup', onPointerUp, false);
+		gameCanvas.addEventListener('touchstart', onPointerDown, { passive: false });
+		gameCanvas.addEventListener('touchmove', onPointerMove, { passive: false });
+		gameCanvas.addEventListener('touchend', onPointerUp, { passive: false });
+		gameCanvas.addEventListener('touchcancel', onPointerUp, { passive: false });
+		gameCanvas.addEventListener('contextmenu', event => event.preventDefault()); // Prevent right-click context menu
+		document.addEventListener('keydown', onKeyDown, false);
+
+		// Orbit Controls for Camera
+		orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+		orbitControls.enableDamping = true; orbitControls.dampingFactor = 0.05; orbitControls.target.set(0, 1, 0);
+		orbitControls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+		orbitControls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN };
+
+		// Lighting
+		const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+		const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); directionalLight.position.set(5, 10, 5); directionalLight.castShadow = true;
+		directionalLight.shadow.mapSize.width = 2048; directionalLight.shadow.mapSize.height = 2048;
+		directionalLight.shadow.camera.near = 0.5; directionalLight.shadow.camera.far = 50;
+		directionalLight.shadow.camera.left = -10; directionalLight.shadow.camera.right = 10;
+		directionalLight.shadow.camera.top = 10; directionalLight.shadow.camera.bottom = -10;
+		scene.add(directionalLight);
+
+		// Cannon.js World Setup
+		world = new CANNON.World(); world.gravity.set(0, -9.82, 0); world.broadphase = new CANNON.SAPBroadphase(world); world.allowSleep = true;
+
+		// Ground
+		const groundGeometry = new THREE.PlaneGeometry(50, 50), groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+		groundMesh = new THREE.Mesh(groundGeometry, groundMaterial); groundMesh.rotation.x = -Math.PI / 2; groundMesh.receiveShadow = true; scene.add(groundMesh);
+		const groundShape = new CANNON.Plane(); groundBody = new CANNON.Body({ mass: 0 }); groundBody.addShape(groundShape); groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); world.addBody(groundBody);
+
+		// Lane
+		const laneWidth = 3, laneDepth = 20, laneHeight = 0.2;
+		const laneGeometry = new THREE.BoxGeometry(laneWidth, laneHeight, laneDepth), laneMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+		laneMesh = new THREE.Mesh(laneGeometry, laneMaterial); laneMesh.position.y = laneHeight / 2; laneMesh.receiveShadow = true; laneMesh.castShadow = true; scene.add(laneMesh);
+		const laneShape = new CANNON.Box(new CANNON.Vec3(laneWidth / 2, laneHeight / 2, laneDepth / 2));
+		laneBody = new CANNON.Body({ mass: 0, material: new CANNON.Material("tableMaterial") }); laneBody.addShape(laneShape); laneBody.position.copy(laneMesh.position); world.addBody(laneBody);
+
+		// Bowling Ball
+		const ballRadius = 0.25;
+		const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32), ballMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+		ballMesh = new THREE.Mesh(ballGeometry, ballMaterial); ballMesh.position.copy(initialBallPosition); ballMesh.castShadow = true; scene.add(ballMesh);
+		const ballShape = new CANNON.Sphere(ballRadius), ballPhysicsMaterial = new CANNON.Material("ballMaterial");
+		ballBody = new CANNON.Body({ mass: 5, material: ballPhysicsMaterial, angularDamping: 0, linearDamping: 0, allowSleep: false }); ballBody.addShape(ballShape); ballBody.position.copy(ballMesh.position); world.addBody(ballBody);
+		ballBody.addEventListener('collide', function(event) { if (draggingBall) { ballBody.velocity.set(0,0,0); ballBody.angularVelocity.set(0,0,0); } });
+
+		// Create Skittles
+		const createSkittle = (x, z) => {
+			const skittleGeometry = new THREE.CylinderGeometry(SKITTLE_RADIUS_TOP, SKITTLE_RADIUS_BOTTOM, SKITTLE_HEIGHT, 16), skittleMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+			const skittleMesh = new THREE.Mesh(skittleGeometry, skittleMaterial); skittleMesh.position.set(x, laneHeight + SKITTLE_HEIGHT / 2, z); skittleMesh.castShadow = true; skittleMesh.receiveShadow = true; scene.add(skittleMesh); skittleMeshes.push(skittleMesh);
+			const skittleShape = new CANNON.Cylinder(SKITTLE_RADIUS_TOP, SKITTLE_RADIUS_BOTTOM, SKITTLE_HEIGHT, 16);
+			const skittleBody = new CANNON.Body({ mass: 0.5, material: new CANNON.Material("skittleMaterial") });
+			skittleBody.addShape(skittleShape, new CANNON.Vec3(0, 0, 0), new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2));
+			skittleBody.position.copy(skittleMesh.position); skittleBody.quaternion.copy(skittleMesh.quaternion); skittleBody.angularDamping = 0.9; world.addBody(skittleBody); skittleBodies.push(skittleBody);
+		};
+
+		const skittleZStart = -8, skittleRowSpacing = 0.5, skittleColumnSpacing = 0.5;
+		createSkittle(0, skittleZStart);
+		createSkittle(-skittleColumnSpacing / 2, skittleZStart - skittleRowSpacing); createSkittle(skittleColumnSpacing / 2, skittleZStart - skittleRowSpacing);
+		createSkittle(-skittleColumnSpacing, skittleZStart - skittleRowSpacing * 2); createSkittle(0, skittleZStart - skittleRowSpacing * 2); createSkittle(skittleColumnSpacing, skittleZStart - skittleRowSpacing * 2);
+		createSkittle(-skittleColumnSpacing * 1.5, skittleZStart - skittleRowSpacing * 3); createSkittle(-skittleColumnSpacing * 0.5, skittleZStart - skittleRowSpacing * 3);
+		createSkittle(skittleColumnSpacing * 0.5, skittleZStart - skittleRowSpacing * 3); createSkittle(skittleColumnSpacing * 1.5, skittleZStart - skittleRowSpacing * 3);
+
+		// Create Far Ramps (Obstacles)
+		const numberOfFarRamps = 10;
+		for (let i = 0; i < numberOfFarRamps; i++) {
+			const rampWidth = Math.random() * 4 + 2, rampHeight = Math.random() * 2 + 1, rampDepth = Math.random() * 4 + 2;
+			let rampX; if (Math.random() > 0.5) rampX = Math.random() * 8 + 2; else rampX = -(Math.random() * 8 + 2);
+			const initialRelativeZ = Math.random() * 20 - 10, rampZ = farRampZ + initialRelativeZ, rampY = 0;
+			const rampRotationX = (Math.random() * 0.4 + 0.1) * (Math.random() > 0.5 ? 1 : -1), rampRotationY = Math.random() * Math.PI * 2;
+			createFarRamp(rampWidth, rampHeight, rampDepth, rampX, rampY, rampZ, rampRotationX, rampRotationY);
+			farRampMeshes[farRampMeshes.length - 1].userData.originalRelativeZ = initialRelativeZ;
+		}
+		updateFarRampZ(); // Initial update for ramp positions based on slider
+
+		// Create Close Ramps (Decorations)
+		const numberOfCloseRamps = 6, closeRampBaseZ = 5, closeRampSideOffset = 2.5, closeRampSpacing = 2;
+		for (let i = 0; i < numberOfCloseRamps; i++) {
+			const width = Math.random() * 1.5 + 1, height = Math.random() * 0.5 + 0.2, depth = Math.random() * 1.5 + 1;
+			let xPosition; if (i % 2 === 0) xPosition = -closeRampSideOffset - (Math.random() * 0.5); else xPosition = closeRampSideOffset + (Math.random() * 0.5);
+			const zPosition = closeRampBaseZ - (i * closeRampSpacing) - (Math.random() * 1), yPosition = 0;
+			const rotationX = Math.PI / 8 + (Math.random() * Math.PI / 16), rotationY = Math.random() * Math.PI / 4 * (Math.random() > 0.5 ? 1 : -1);
+			createCloseRamp(width, height, depth, xPosition, yPosition, zPosition, rotationX, rotationY);
+		}
+
+		// Cannon.js Contact Materials
+		const ballToTableContact = new CANNON.ContactMaterial(ballPhysicsMaterial, laneBody.material, { friction: 0.01, restitution: 0.6 }); world.addContactMaterial(ballToTableContact);
+		const ballToSkittleContact = new CANNON.ContactMaterial(ballPhysicsMaterial, skittleBodies[0].material, { friction: 0.01, restitution: 0.3 }); world.addContactMaterial(ballToSkittleContact);
+		// FIX: Corrected variable name from 'stc' to 'skittleToTableContact'
+		const skittleToTableContact = new CANNON.ContactMaterial(skittleBodies[0].material, laneBody.material, { friction: 0.8, restitution: 0.1 }); world.addContactMaterial(skittleToTableContact);
+		const ballToRampContact = new CANNON.ContactMaterial(ballPhysicsMaterial, new CANNON.Material("rampMaterial"), { friction: 0.5, restitution: 0.2 }); world.addContactMaterial(ballToRampContact);
+		// New: Ball to Rock contact material
+		const ballToRockContact = new CANNON.ContactMaterial(ballPhysicsMaterial, new CANNON.Material("rockMaterial"), { friction: 0.8, restitution: 0.1 }); world.addContactMaterial(ballToRockContact);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Bowling Game</title>
+	<style>body{margin:0;overflow:hidden;font-family:sans-serif}canvas{display:block;width:100vw;height:100vh;outline:none;touch-action:none}#welcome-message{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 15px;border-radius:5px;font-size:1.2em;text-align:center;z-index:10;pointer-events:none}#score{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 15px;border-radius:5px;font-size:1.2em;z-index:10;pointer-events:none}#click-indicator{position:absolute;top:10px;right:10px;width:30px;height:30px;background-color:gray;border-radius:5px;z-index:100;transition:background-color .1s;pointer-events:none}#game-controls{position:absolute;bottom:10px;left:10px;z-index:10}#menuButton{background-color:#007bff;color:#fff;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:1em;box-shadow:0 4px 6px rgba(0,0,0,0.1);transition:background-color .3s ease,transform .1s ease}#menuButton:hover{background-color:#0056b3;transform:translateY(-2px)}#menuButton:active{transform:translateY(0);box-shadow:0 2px 4px rgba(0,0,0,0.1)}#gameMenu{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:20;transition:opacity .3s ease;opacity:0;visibility:hidden}#gameMenu.active{opacity:1;visibility:visible}#gameMenu button{background-color:#4CAF50;color:#fff;padding:15px 30px;border:none;border-radius:10px;cursor:pointer;font-size:1.5em;margin:10px;width:80%;max-width:300px;box-shadow:0 6px 8px rgba(0,0,0,0.2);transition:background-color .3s ease,transform .1s ease}#gameMenu button:hover{background-color:#45a049;transform:translateY(-2px)}#gameMenu button:active{transform:translateY(0);box-shadow:0 3px 5px rgba(0,0,0,0.2)}#gameMenu #closeMenuButton{background-color:#dc3545}#gameMenu #closeMenuButton:hover{background-color:#c82333}</style>
+	
+</head>
+<body>
+
+<div id="welcome-message">
+Welcome!
+</div>
+<div id="score">Skittles Down: 0</div>
+<div id="click-indicator"></div>
+<div id="game-controls">
+<button id="menuButton">Menu</button>
+</div>
+<div id="gameMenu">
+<button id="howToPlayButton">How to Play</button>
+<div class="slider-container">
+<label for="rampDistanceSlider">Far Ramp Distance:</label>
+<input type="range" id="rampDistanceSlider" min="0" max="100" value="50">
+<span id="rampDistanceValue">50</span>
+</div>
+<button id="toggleRampsButton">Toggle Ramps</button>
+<button id="resetGameMenuButton">Reset Game</button>
+<button id="aboutButton">About</button>
+<button id="closeMenuButton">Close Menu</button>
+</div>
+<div id="howToPlayModal">
+<div id="howToPlayContent">
+<h3>How to Play</h3>
+<p>
+<strong>Throwing the Ball:</strong>
+<br>
+**Mouse/Touchpad:** Left-click and drag anywhere on the lane to pick up the ball. Drag your mouse/finger to aim and set the power, then release to throw. A faster, longer drag forward will result in a more powerful throw.
+<br>
+**Mobile Touch:** Single-tap and drag anywhere on the lane to pick up the ball. Drag your finger to aim and set the power, then release to throw. A faster, longer drag forward will result in a more powerful throw.
+</p>
+<p>
+<strong>Camera Controls:</strong>
+<br>
+**Mouse/Touchpad:** Right-click and drag to rotate the camera. Scroll to zoom in/out.
+<br>
+**Mobile Touch:** Use two fingers to drag and rotate the camera. Pinch to zoom in/out.
+</p>
+<p>
+<strong>Keyboard Controls:</strong>
+<ul>
+<li>**Spacebar:** Reset the ball and skittles to their starting positions.</li>
+<li>**Up Arrow (&#8593;):** Throw the ball forward from its current position.</li>
+<li>**Left Arrow (&#8592;):** Nudge the ball slightly to the left.</li>
+<li>**Right Arrow (&#8594;):** Nudge the ball slightly to the right.</li>
+</ul>
+</p>
+<button id="closeHowToPlayButton">Got It!</button>
+</div>
+</div>
+<div id="aboutModal">
+<div id="aboutContent">
+<h3>About This Game</h3>
+<p>
+This is a simple 3D bowling game built using Three.js for rendering and Cannon.js for physics simulation.
+<br><br>
+It was developed by Gemini AI as a demonstration of interactive web-based 3D applications.
+<br><br>
+Enjoy knocking down some skittles!
+</p>
+<button id="closeAboutButton">Close</button>
+</div>
+</div>
+
+<canvas id="gameCanvas" tabindex="0"></canvas>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script><script>
+console.log("Script Started! (Using DOMContentLoaded)");
+let scene, camera, renderer, orbitControls, world, ballMesh, ballBody, skittleMeshes = [], skittleBodies = [], laneMesh, laneBody, groundMesh, groundBody, farRampMeshes = [], farRampBodies = [], closeRampMeshes = [], closeRampBodies = [];
+let rampsVisible = true, farRampZ = -50, mousePosition = new THREE.Vector2(), raycaster = new THREE.Raycaster(), draggingBall = false, dragStartTime, dragStartMousePosition = new THREE.Vector2(), initialBallPosition = new THREE.Vector3(0, 0.5, 8), skittlesDownCount = 0;
+let gameCanvas, clickIndicator, menuButton, gameMenu, closeMenuButton, howToPlayButton, toggleRampsButton, resetGameMenuButton, aboutButton, howToPlayModal, closeHowToPlayButton, aboutModal, closeAboutButton, rampDistanceSlider, rampDistanceValueDisplay;
+const SKITTLE_HEIGHT = 1.0, SKITTLE_RADIUS_TOP = 0.08, SKITTLE_RADIUS_BOTTOM = 0.12;
+let initialized = false;
+
+// New variable to hold the RockManager instance
+let rockManager;
+
+// Function Aliases for Menu and Modals
+function toggleMenu() { gameMenu.classList.toggle('active'); }
+function showHowToPlay() { howToPlayModal.classList.add('active'); gameMenu.classList.remove('active'); }
+function hideHowToPlay() { howToPlayModal.classList.remove('active'); }
+function showAbout() { aboutModal.classList.add('active'); gameMenu.classList.remove('active'); }
+function hideAbout() { aboutModal.classList.remove('active'); }
+
+// Function to Toggle Ramps Visibility
+function toggleRampsVisibility() {
+	rampsVisible = !rampsVisible;
+	farRampMeshes.forEach(mesh => { mesh.visible = rampsVisible; });
+	farRampBodies.forEach(body => { body.collisionResponse = rampsVisible; if (!rampsVisible) body.sleep(); else body.wakeUp(); });
+	closeRampMeshes.forEach(mesh => { mesh.visible = rampsVisible; });
+	closeRampBodies.forEach(body => { body.collisionResponse = rampsVisible; if (!rampsVisible) body.sleep(); else body.wakeUp(); });
+	console.log(`Ramps visibility: ${rampsVisible ? 'ON' : 'OFF'}`);
+}
+
+// Function to Reset Ball and Skittles
+function resetBallAndSkittles() {
+	console.log("Resetting ball and skittles...");
+	ballBody.position.copy(initialBallPosition); ballMesh.position.copy(initialBallPosition);
+	ballBody.velocity.set(0, 0, 0); ballBody.angularVelocity.set(0, 0, 0);
+	ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false;
+	draggingBall = false; orbitControls.enabled = true;
+	const skittleZStart = -8, skittleRowSpacing = 0.5, skittleColumnSpacing = 0.5, tableHeight = 0.2;
+	const skittlePositions = [
+		{ x: 0, z: skittleZStart }, { x: -skittleColumnSpacing / 2, z: skittleZStart - skittleRowSpacing }, { x: skittleColumnSpacing / 2, z: skittleZStart - skittleRowSpacing },
+		{ x: -skittleColumnSpacing, z: skittleZStart - skittleRowSpacing * 2 }, { x: 0, z: skittleZStart - skittleRowSpacing * 2 }, { x: skittleColumnSpacing, z: skittleZStart - skittleRowSpacing * 2 },
+		{ x: -skittleColumnSpacing * 1.5, z: skittleZStart - skittleRowSpacing * 3 }, { x: -skittleColumnSpacing * 0.5, z: skittleZStart - skittleRowSpacing * 3 },
+		{ x: skittleColumnSpacing * 0.5, z: skittleZStart - skittleRowSpacing * 3 }, { x: skittleColumnSpacing * 1.5, z: skittleZStart - skittleRowSpacing * 3 }
+	];
+	skittleBodies.forEach((body, i) => {
+		const pos = skittlePositions[i];
+		body.position.set(pos.x, tableHeight + SKITTLE_HEIGHT / 2, pos.z);
+		body.quaternion.set(0, 0, 0, 1);
+		body.velocity.set(0, 0, 0); body.angularVelocity.set(0, 0, 0); body.sleep();
+	});
+	skittleMeshes.forEach((mesh, i) => {
+		const pos = skittlePositions[i];
+		mesh.position.set(pos.x, tableHeight + SKITTLE_HEIGHT / 2, pos.z); mesh.rotation.set(0, 0, 0);
+	});
+	skittlesDownCount = 0; document.getElementById('score').innerText = `Skittles Down: ${skittlesDownCount}`;
+}
+
+// Function to Check Skittles Down
+function checkSkittlesDown() {
+	let fallenCount = 0, threshold = Math.cos(Math.PI / 4);
+	skittleBodies.forEach(body => {
+		const upVector = new CANNON.Vec3(0, 1, 0), currentUp = body.quaternion.vmult(upVector);
+		if (currentUp.dot(upVector) < threshold) fallenCount++;
+	});
+	if (fallenCount !== skittlesDownCount) {
+		skittlesDownCount = fallenCount;
+		document.getElementById('score').innerText = `Skittles Down: ${skittlesDownCount}`;
+	}
+}
+
+// Function to Handle Window Resize
+function onWindowResize() {
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Function to Handle Pointer Down (Mouse/Touch)
+function onPointerDown(event) {
+	const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+	const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+	const button = event.touches ? 0 : event.button;
+
+	if (clickIndicator) { clickIndicator.style.backgroundColor = 'red'; setTimeout(() => { clickIndicator.style.backgroundColor = 'gray'; }, 100); }
+	if (event.target !== gameCanvas) return;
+
+	if (button === 2 || (event.touches && event.touches.length > 1)) event.preventDefault(); // Prevent context menu on right click or two-finger touch
+
+	mousePosition.x = (clientX / window.innerWidth) * 2 - 1;
+	mousePosition.y = -(clientY / window.innerHeight) * 2 + 1;
+
+	if (button === 0) { // Left click or single touch
+		draggingBall = true; orbitControls.enabled = false;
+		dragStartTime = performance.now(); dragStartMousePosition.copy(mousePosition);
+		ballBody.position.copy(initialBallPosition); ballMesh.position.copy(initialBallPosition);
+		ballBody.velocity.set(0, 0, 0); ballBody.angularVelocity.set(0, 0, 0);
+		ballBody.type = CANNON.Body.KINEMATIC; ballBody.allowSleep = false;
+	} else if (button === 2 || (event.touches && event.touches.length > 1)) { // Right click or two-finger touch
+		draggingBall = false; orbitControls.enabled = true;
+	}
+	event.preventDefault();
+}
+
+// Function to Handle Pointer Move (Mouse/Touch)
+function onPointerMove(event) {
+	const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+	const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+
+	mousePosition.x = (clientX / window.innerWidth) * 2 - 1;
+	mousePosition.y = -(clientY / window.innerHeight) * 2 + 1;
+
+	if (draggingBall) {
+		raycaster.setFromCamera(mousePosition, camera);
+		const planeY = laneMesh.position.y + (ballMesh.geometry.parameters.radius || 0.25);
+		const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+		const intersectPoint = new THREE.Vector3();
+		raycaster.ray.intersectPlane(interactionPlane, intersectPoint);
+		if (intersectPoint) { ballMesh.position.copy(intersectPoint); ballBody.position.copy(intersectPoint); }
+	}
+	event.preventDefault();
+}
+
+// Function to Handle Pointer Up (Mouse/Touch)
+function onPointerUp(event) {
+	const clientX = event.changedTouches ? event.changedTouches[0].clientX : event.clientX;
+	const clientY = event.changedTouches ? event.changedTouches[0].clientY : event.clientY;
+	const button = event.changedTouches ? 0 : event.button;
+
+	if (clickIndicator) { clickIndicator.style.backgroundColor = 'blue'; setTimeout(() => { clickIndicator.style.backgroundColor = 'gray'; }, 100); }
+	if (event.target !== gameCanvas) return;
+
+	if (button === 0 && draggingBall) {
+		draggingBall = false; orbitControls.enabled = true; ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false;
+		const dragEndTime = performance.now(), dragDuration = dragEndTime - dragStartTime;
+		const dragEndMousePosition = new THREE.Vector2((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+		const dragVector = new THREE.Vector2().subVectors(dragEndMousePosition, dragStartMousePosition);
+		const dragVelocityMagnitude = dragVector.length() / (Math.max(1, dragDuration) / 1000);
+		const horizontalForceScale = 10;
+		let forwardForceScale = 40;
+		if (!event.touches || event.touches.length === 0) { forwardForceScale = 70; } // Adjust for mouse vs touch sensitivity
+		const impulse = new CANNON.Vec3(dragVector.x * horizontalForceScale * dragVelocityMagnitude, 0, -dragVector.y * forwardForceScale * dragVelocityMagnitude);
+		ballBody.applyImpulse(impulse, ballBody.position);
+	} else if (button === 2 || (event.touches && event.touches.length > 1)) {
+		orbitControls.enabled = true;
+	}
+	event.preventDefault();
+}
+
+// Function to Handle Keyboard Input
+function onKeyDown(event) {
+	const nudgeForce = 0.05, throwForce = 150;
+	switch (event.code) {
+		case 'Space': resetBallAndSkittles(); break;
+		case 'ArrowUp': ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false; ballBody.applyImpulse(new CANNON.Vec3(0, 0, -throwForce), ballBody.position); break;
+		case 'ArrowLeft': ballBody.applyImpulse(new CANNON.Vec3(-nudgeForce, 0, 0), ballBody.position); break;
+		case 'ArrowRight': ballBody.applyImpulse(new CANNON.Vec3(nudgeForce, 0, 0), ballBody.position); break;
+	}
+}
+
+// Function to Create Far Ramp
+function createFarRamp(width, height, depth, x, y, z, rotationX, rotationY) {
+	const geometry = new THREE.BoxGeometry(width, height, depth), material = new THREE.MeshStandardMaterial({ color: 0x663300 });
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.position.set(x, y + height / 2, z); mesh.rotation.x = rotationX; mesh.rotation.y = rotationY; mesh.castShadow = true; mesh.receiveShadow = true;
+	scene.add(mesh); farRampMeshes.push(mesh);
+	const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+	const body = new CANNON.Body({ mass: 0, material: new CANNON.Material("rampMaterial") });
+	body.addShape(shape); body.position.copy(mesh.position);
+	const quaternion = new CANNON.Quaternion(); quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+	body.quaternion.copy(quaternion); world.addBody(body); farRampBodies.push(body);
+}
+
+// Function to Create Close Ramp
+function createCloseRamp(width, height, depth, x, y, z, rotationX, rotationY) {
+	const geometry = new THREE.BoxGeometry(width, height, depth), material = new THREE.MeshStandardMaterial({ color: 0x4B0082 });
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.position.set(x, y + height / 2, z); mesh.rotation.x = rotationX; mesh.rotation.y = rotationY; mesh.castShadow = true; mesh.receiveShadow = true;
+	scene.add(mesh); closeRampMeshes.push(mesh);
+	const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+	const body = new CANNON.Body({ mass: 0, material: new CANNON.Material("rampMaterial") });
+	body.addShape(shape); body.position.copy(mesh.position);
+	const quaternion = new CANNON.Quaternion(); quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+	body.quaternion.copy(quaternion); world.addBody(body); closeRampBodies.push(body);
+}
+
+// Function to Update Far Ramp Z Position
+function updateFarRampZ() {
+	const minZ = -80, maxZ = -30;
+	farRampZ = minZ + (rampDistanceSlider.value / 100) * (maxZ - minZ);
+	rampDistanceValueDisplay.innerText = rampDistanceSlider.value;
+	farRampMeshes.forEach((mesh, i) => {
+		const originalRelativeZ = mesh.userData.originalRelativeZ || (mesh.position.z - farRampZ);
+		if (!mesh.userData.originalRelativeZ) mesh.userData.originalRelativeZ = mesh.position.z - farRampZ;
+		const newZ = farRampZ + originalRelativeZ;
+		mesh.position.z = newZ; farRampBodies[i].position.z = newZ;
+	});
+}
+
+// RockManager Class Definition
+class RockManager {
+    constructor(scene, world, camera, initialSpawnZ, spawnDistance, removalDistance, numRocks) {
+        this.scene = scene;
+        this.world = world;
+        this.camera = camera;
+        this.initialSpawnZ = initialSpawnZ;
+        this.spawnDistance = spawnDistance;
+        this.removalDistance = removalDistance;
+        this.rocks = [];
+        this.lastCameraZ = camera.position.z;
+
+        // Create a material for the rocks
+        this.rockMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 }); // Dark grey for rocks
+        this.rockPhysicsMaterial = new CANNON.Material("rockMaterial");
+
+        // Initial population of rocks
+        for (let i = 0; i < numRocks; i++) {
+            this.createRandomRock(this.initialSpawnZ + Math.random() * spawnDistance);
+        }
+    }
+
+    createRandomRock(zPos) {
+        const type = Math.random();
+        let geometry, shape;
+        const scale = Math.random() * 0.8 + 0.5; // Random scale for variety
+        const height = scale * (Math.random() * 1.5 + 1); // Varied height for pyramids/ramps
+
+        if (type < 0.5) { // 50% chance for a ramp
+            // Ramp (rotated box)
+            const width = scale * 2;
+            const depth = scale * 2;
+            geometry = new THREE.BoxGeometry(width, height * 0.5, depth); // Flatter box for ramp
+            shape = new CANNON.Box(new CANNON.Vec3(width / 2, height * 0.25, depth / 2)); // Physics shape for ramp
+
+            const mesh = new THREE.Mesh(geometry, this.rockMaterial);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            this.scene.add(mesh);
+
+            const body = new CANNON.Body({
+                mass: 0, // Static
+                material: this.rockPhysicsMaterial,
+                collisionResponse: true
+            });
+            body.addShape(shape);
+            this.world.addBody(body);
+
+            // Position and rotate the ramp
+            const xPos = (Math.random() - 0.5) * 80;
+            mesh.position.set(xPos, -0.5 + height * 0.25, zPos); // Adjust Y for half height
+            body.position.copy(mesh.position);
+
+            const rotationX = (Math.random() * Math.PI / 6) * (Math.random() > 0.5 ? 1 : -1); // Small random tilt
+            const rotationY = Math.random() * Math.PI * 2; // Random yaw
+            mesh.rotation.set(rotationX, rotationY, 0);
+            const quaternion = new CANNON.Quaternion();
+            quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+            body.quaternion.copy(quaternion);
+
+            this.rocks.push({ mesh, body, initialRelativeZ: zPos - this.camera.position.z });
+
+        } else { // 50% chance for a pyramid
+            // Pyramid (cone with 4 segments)
+            const radius = scale * 1.2; // Base radius
+            geometry = new THREE.ConeGeometry(radius, height, 4); // 4 segments for a square pyramid
+            shape = new CANNON.Cylinder(0.001, radius, height, 4); // Cannon.js cylinder for pyramid approximation (top radius almost zero)
+
+            const mesh = new THREE.Mesh(geometry, this.rockMaterial);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            this.scene.add(mesh);
+
+            const body = new CANNON.Body({
+                mass: 0, // Static
+                material: this.rockPhysicsMaterial,
+                collisionResponse: true
+            });
+            // Cannon.js Cylinder's axis is Y by default, Three.js Cone's axis is Y.
+            // No need to rotate Cannon.js body if it's aligned with Three.js mesh.
+            body.addShape(shape);
+            this.world.addBody(body);
+
+            // Position the pyramid
+            const xPos = (Math.random() - 0.5) * 80;
+            mesh.position.set(xPos, -0.5 + height / 2, zPos); // Adjust Y for half height
+            body.position.copy(mesh.position);
+
+            const rotationY = Math.random() * Math.PI * 2; // Random yaw
+            mesh.rotation.set(0, rotationY, 0);
+            const quaternion = new CANNON.Quaternion();
+            quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+            body.quaternion.copy(quaternion);
+
+            this.rocks.push({ mesh, body, initialRelativeZ: zPos - this.camera.position.z });
+        }
+    }
+
+    update() {
+        const cameraZ = this.camera.position.z;
+
+        // Check for rocks to recycle/reposition
+        this.rocks.forEach(rock => {
+            if (rock.mesh.position.z > cameraZ + this.removalDistance) {
+                // Reposition the rock far ahead of the current camera position
+                const newZ = cameraZ - this.spawnDistance - (Math.random() * this.spawnDistance * 0.5);
+                const newX = (Math.random() - 0.5) * 80; // Increased horizontal spread for recycled rocks too
+
+                // Randomly choose between ramp or pyramid for the recycled rock
+                const type = Math.random();
+                let geometry, shape;
+                const scale = Math.random() * 0.8 + 0.5;
+                const height = scale * (Math.random() * 1.5 + 1);
+
+                if (type < 0.5) { // Ramp
+                    const width = scale * 2;
+                    const depth = scale * 2;
+                    geometry = new THREE.BoxGeometry(width, height * 0.5, depth);
+                    shape = new CANNON.Box(new CANNON.Vec3(width / 2, height * 0.25, depth / 2));
+                    rock.mesh.geometry.dispose(); // Dispose old geometry
+                    rock.mesh.geometry = geometry;
+                    rock.body.removeShape(rock.body.shapes[0]); // Remove old physics shape
+                    rock.body.addShape(shape);
+
+                    rock.mesh.position.set(newX, -0.5 + height * 0.25, newZ);
+                    const rotationX = (Math.random() * Math.PI / 6) * (Math.random() > 0.5 ? 1 : -1);
+                    const rotationY = Math.random() * Math.PI * 2;
+                    rock.mesh.rotation.set(rotationX, rotationY, 0);
+                    const quaternion = new CANNON.Quaternion();
+                    quaternion.setFromEuler(rock.mesh.rotation.x, rock.mesh.rotation.y, rock.mesh.rotation.z, 'XYZ');
+                    rock.body.quaternion.copy(quaternion);
+
+                } else { // Pyramid
+                    const radius = scale * 1.2;
+                    geometry = new THREE.ConeGeometry(radius, height, 4);
+                    shape = new CANNON.Cylinder(0.001, radius, height, 4);
+                    rock.mesh.geometry.dispose(); // Dispose old geometry
+                    rock.mesh.geometry = geometry;
+                    rock.body.removeShape(rock.body.shapes[0]); // Remove old physics shape
+                    rock.body.addShape(shape);
+
+                    rock.mesh.position.set(newX, -0.5 + height / 2, newZ);
+                    const rotationY = Math.random() * Math.PI * 2;
+                    rock.mesh.rotation.set(0, rotationY, 0);
+                    const quaternion = new CANNON.Quaternion();
+                    quaternion.setFromEuler(rock.mesh.rotation.x, rock.mesh.rotation.y, rock.mesh.rotation.z, 'XYZ');
+                    rock.body.quaternion.copy(quaternion);
+                }
+
+                rock.body.position.copy(rock.mesh.position);
+                rock.body.velocity.set(0, 0, 0);
+                rock.body.angularVelocity.set(0, 0, 0);
+                rock.body.sleep(); // Put to sleep until hit
+            }
+        });
+
+        this.lastCameraZ = cameraZ;
+    }
+}
+
+
+// Function for Game Initialization
+function initializeGame() {
+	try {
+		if (initialized) return; initialized = true;
+
+		// Get DOM elements
+		gameCanvas = document.getElementById('gameCanvas');
+		clickIndicator = document.getElementById('click-indicator');
+		menuButton = document.getElementById('menuButton');
+		gameMenu = document.getElementById('gameMenu');
+		closeMenuButton = document.getElementById('closeMenuButton');
+		howToPlayButton = document.getElementById('howToPlayButton');
+		toggleRampsButton = document.getElementById('toggleRampsButton');
+		resetGameMenuButton = document.getElementById('resetGameMenuButton');
+		aboutButton = document.getElementById('aboutButton');
+		howToPlayModal = document.getElementById('howToPlayModal');
+		closeHowToPlayButton = document.getElementById('closeHowToPlayButton');
+		aboutModal = document.getElementById('aboutModal');
+		closeAboutButton = document.getElementById('closeAboutButton');
+		rampDistanceSlider = document.getElementById('rampDistanceSlider');
+		rampDistanceValueDisplay = document.getElementById('rampDistanceValue');
+
+		// Add event listeners
+		if (menuButton) menuButton.addEventListener('click', toggleMenu, false);
+		if (closeMenuButton) closeMenuButton.addEventListener('click', toggleMenu, false);
+		if (howToPlayButton) howToPlayButton.addEventListener('click', showHowToPlay, false);
+		if (closeHowToPlayButton) closeHowToPlayButton.addEventListener('click', hideHowToPlay, false);
+		if (toggleRampsButton) toggleRampsButton.addEventListener('click', toggleRampsVisibility, false);
+		if (resetGameMenuButton) resetGameMenuButton.addEventListener('click', () => { resetBallAndSkittles(); toggleMenu(); }, false);
+		if (aboutButton) aboutButton.addEventListener('click', showAbout, false);
+		if (closeAboutButton) closeAboutButton.addEventListener('click', hideAbout, false);
+		if (rampDistanceSlider) { rampDistanceSlider.addEventListener('input', updateFarRampZ, false); rampDistanceSlider.value = 50; rampDistanceValueDisplay.innerText = rampDistanceSlider.value; }
+
+		gameCanvas.focus();
+
+		// Three.js Scene Setup
+		scene = new THREE.Scene(); scene.background = new THREE.Color(0x87ceeb);
+		camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); camera.position.set(0, 5, 15);
+		renderer = new THREE.WebGLRenderer({ antialias: true, canvas: gameCanvas }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true;
+
+		// Input Event Listeners for Game Canvas
+		gameCanvas.addEventListener('mousedown', onPointerDown, false);
+		gameCanvas.addEventListener('mousemove', onPointerMove, false);
+		gameCanvas.addEventListener('mouseup', onPointerUp, false);
+		gameCanvas.addEventListener('touchstart', onPointerDown, { passive: false });
+		gameCanvas.addEventListener('touchmove', onPointerMove, { passive: false });
+		gameCanvas.addEventListener('touchend', onPointerUp, { passive: false });
+		gameCanvas.addEventListener('touchcancel', onPointerUp, { passive: false });
+		gameCanvas.addEventListener('contextmenu', event => event.preventDefault()); // Prevent right-click context menu
+		document.addEventListener('keydown', onKeyDown, false);
+
+		// Orbit Controls for Camera
+		orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+		orbitControls.enableDamping = true; orbitControls.dampingFactor = 0.05; orbitControls.target.set(0, 1, 0);
+		orbitControls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+		orbitControls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN };
+
+		// Lighting
+		const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+		const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); directionalLight.position.set(5, 10, 5); directionalLight.castShadow = true;
+		directionalLight.shadow.mapSize.width = 2048; directionalLight.shadow.mapSize.height = 2048;
+		directionalLight.shadow.camera.near = 0.5; directionalLight.shadow.camera.far = 50;
+		directionalLight.shadow.camera.left = -10; directionalLight.shadow.camera.right = 10;
+		directionalLight.shadow.camera.top = 10; directionalLight.shadow.camera.bottom = -10;
+		scene.add(directionalLight);
+
+		// Cannon.js World Setup
+		world = new CANNON.World(); world.gravity.set(0, -9.82, 0); world.broadphase = new CANNON.SAPBroadphase(world); world.allowSleep = true;
+
+		// Ground
+		const groundGeometry = new THREE.PlaneGeometry(50, 50), groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+		groundMesh = new THREE.Mesh(groundGeometry, groundMaterial); groundMesh.rotation.x = -Math.PI / 2; groundMesh.receiveShadow = true; scene.add(groundMesh);
+		const groundShape = new CANNON.Plane(); groundBody = new CANNON.Body({ mass: 0 }); groundBody.addShape(groundShape); groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); world.addBody(groundBody);
+
+		// Lane
+		const laneWidth = 3, laneDepth = 20, laneHeight = 0.2;
+		const laneGeometry = new THREE.BoxGeometry(laneWidth, laneHeight, laneDepth), laneMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+		laneMesh = new THREE.Mesh(laneGeometry, laneMaterial); laneMesh.position.y = laneHeight / 2; laneMesh.receiveShadow = true; laneMesh.castShadow = true; scene.add(laneMesh);
+		const laneShape = new CANNON.Box(new CANNON.Vec3(laneWidth / 2, laneHeight / 2, laneDepth / 2));
+		laneBody = new CANNON.Body({ mass: 0, material: new CANNON.Material("tableMaterial") }); laneBody.addShape(laneShape); laneBody.position.copy(laneMesh.position); world.addBody(laneBody);
+
+		// Bowling Ball
+		const ballRadius = 0.25;
+		const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32), ballMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+		ballMesh = new THREE.Mesh(ballGeometry, ballMaterial); ballMesh.position.copy(initialBallPosition); ballMesh.castShadow = true; scene.add(ballMesh);
+		const ballShape = new CANNON.Sphere(ballRadius), ballPhysicsMaterial = new CANNON.Material("ballMaterial");
+		ballBody = new CANNON.Body({ mass: 5, material: ballPhysicsMaterial, angularDamping: 0, linearDamping: 0, allowSleep: false }); ballBody.addShape(ballShape); ballBody.position.copy(ballMesh.position); world.addBody(ballBody);
+		ballBody.addEventListener('collide', function(event) { if (draggingBall) { ballBody.velocity.set(0,0,0); ballBody.angularVelocity.set(0,0,0); } });
+
+		// Create Skittles
+		const createSkittle = (x, z) => {
+			const skittleGeometry = new THREE.CylinderGeometry(SKITTLE_RADIUS_TOP, SKITTLE_RADIUS_BOTTOM, SKITTLE_HEIGHT, 16), skittleMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+			const skittleMesh = new THREE.Mesh(skittleGeometry, skittleMaterial); skittleMesh.position.set(x, laneHeight + SKITTLE_HEIGHT / 2, z); skittleMesh.castShadow = true; skittleMesh.receiveShadow = true; scene.add(skittleMesh); skittleMeshes.push(skittleMesh);
+			const skittleShape = new CANNON.Cylinder(SKITTLE_RADIUS_TOP, SKITTLE_RADIUS_BOTTOM, SKITTLE_HEIGHT, 16);
+			const skittleBody = new CANNON.Body({ mass: 0.5, material: new CANNON.Material("skittleMaterial") });
+			skittleBody.addShape(skittleShape, new CANNON.Vec3(0, 0, 0), new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2));
+			skittleBody.position.copy(skittleMesh.position); skittleBody.quaternion.copy(skittleMesh.quaternion); skittleBody.angularDamping = 0.9; world.addBody(skittleBody); skittleBodies.push(skittleBody);
+		};
+
+		const skittleZStart = -8, skittleRowSpacing = 0.5, skittleColumnSpacing = 0.5;
+		createSkittle(0, skittleZStart);
+		createSkittle(-skittleColumnSpacing / 2, skittleZStart - skittleRowSpacing); createSkittle(skittleColumnSpacing / 2, skittleZStart - skittleRowSpacing);
+		createSkittle(-skittleColumnSpacing, skittleZStart - skittleRowSpacing * 2); createSkittle(0, skittleZStart - skittleRowSpacing * 2); createSkittle(skittleColumnSpacing, skittleZStart - skittleRowSpacing * 2);
+		createSkittle(-skittleColumnSpacing * 1.5, skittleZStart - skittleRowSpacing * 3); createSkittle(-skittleColumnSpacing * 0.5, skittleZStart - skittleRowSpacing * 3);
+		createSkittle(skittleColumnSpacing * 0.5, skittleZStart - skittleRowSpacing * 3); createSkittle(skittleColumnSpacing * 1.5, skittleZStart - skittleRowSpacing * 3);
+
+		// Create Far Ramps (Obstacles)
+		const numberOfFarRamps = 10;
+		for (let i = 0; i < numberOfFarRamps; i++) {
+			const rampWidth = Math.random() * 4 + 2, rampHeight = Math.random() * 2 + 1, rampDepth = Math.random() * 4 + 2;
+			let rampX; if (Math.random() > 0.5) rampX = Math.random() * 8 + 2; else rampX = -(Math.random() * 8 + 2);
+			const initialRelativeZ = Math.random() * 20 - 10, rampZ = farRampZ + initialRelativeZ, rampY = 0;
+			const rampRotationX = (Math.random() * 0.4 + 0.1) * (Math.random() > 0.5 ? 1 : -1), rampRotationY = Math.random() * Math.PI * 2;
+			createFarRamp(rampWidth, rampHeight, rampDepth, rampX, rampY, rampZ, rampRotationX, rampRotationY);
+			farRampMeshes[farRampMeshes.length - 1].userData.originalRelativeZ = initialRelativeZ;
+		}
+		updateFarRampZ(); // Initial update for ramp positions based on slider
+
+		// Create Close Ramps (Decorations)
+		const numberOfCloseRamps = 6, closeRampBaseZ = 5, closeRampSideOffset = 2.5, closeRampSpacing = 2;
+		for (let i = 0; i < numberOfCloseRamps; i++) {
+			const width = Math.random() * 1.5 + 1, height = Math.random() * 0.5 + 0.2, depth = Math.random() * 1.5 + 1;
+			let xPosition; if (i % 2 === 0) xPosition = -closeRampSideOffset - (Math.random() * 0.5); else xPosition = closeRampSideOffset + (Math.random() * 0.5);
+			const zPosition = closeRampBaseZ - (i * closeRampSpacing) - (Math.random() * 1), yPosition = 0;
+			const rotationX = Math.PI / 8 + (Math.random() * Math.PI / 16), rotationY = Math.random() * Math.PI / 4 * (Math.random() > 0.5 ? 1 : -1);
+			createCloseRamp(width, height, depth, xPosition, yPosition, zPosition, rotationX, rotationY);
+		}
+
+		// Cannon.js Contact Materials
+		const ballToTableContact = new CANNON.ContactMaterial(ballPhysicsMaterial, laneBody.material, { friction: 0.01, restitution: 0.6 }); world.addContactMaterial(ballToTableContact);
+		const ballToSkittleContact = new CANNON.ContactMaterial(ballPhysicsMaterial, skittleBodies[0].material, { friction: 0.01, restitution: 0.3 }); world.addContactMaterial(ballToSkittleContact);
+		// FIX: Corrected variable name from 'stc' to 'skittleToTableContact'
+		const skittleToTableContact = new CANNON.ContactMaterial(skittleBodies[0].material, laneBody.material, { friction: 0.8, restitution: 0.1 }); world.addContactMaterial(skittleToTableContact);
+		const ballToRampContact = new CANNON.ContactMaterial(ballPhysicsMaterial, new CANNON.Material("rampMaterial"), { friction: 0.5, restitution: 0.2 }); world.addContactMaterial(ballToRampContact);
+		// New: Ball to Rock contact material
+		const ballToRockContact = new CANNON.ContactMaterial(ballPhysicsMaterial, new CANNON.Material("rockMaterial"), { friction: 0.8, restitution: 0.1 }); world.addContactMaterial(ballToRockContact);
+
+
+		// Initialize RockManager with more rocks and wider spread
+		// Parameters: scene, world, camera, initialSpawnZ, spawnDistance, removalDistance, numRocks
+		rockManager = new RockManager(scene, world, camera, -100, 200, 100, 150); // Increased numRocks, spawnDistance, removalDistance for more prominent effect
+
+		window.addEventListener('resize', onWindowResize, false);
+	} catch (e) { console.error("Error during game initialization:", e); }
+}
+
+// Animation Loop
+function animate() {
+	requestAnimationFrame(animate);
+	if (world) {
+		const deltaTime = 1 / 60; world.step(deltaTime);<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>3D Bowling Game</title>
+
+  <style>body{margin:0;overflow:hidden;font-family:sans-serif}canvas{display:block;width:100vw;height:100vh;outline:none;touch-action:none}#welcome-message{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 15px;border-radius:5px;font-size:1.2em;text-align:center;z-index:10;pointer-events:none}#score{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 15px;border-radius:5px;font-size:1.2em;z-index:10;pointer-events:none}#click-indicator{position:absolute;top:10px;right:10px;width:30px;height:30px;background-color:gray;border-radius:5px;z-index:100;transition:background-color .1s;pointer-events:none}#game-controls{position:absolute;bottom:10px;left:10px;z-index:10}#menuButton{background-color:#007bff;color:#fff;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:1em;box-shadow:0 4px 6px rgba(0,0,0,0.1);transition:background-color .3s ease,transform .1s ease}#menuButton:hover{background-color:#0056b3;transform:translateY(-2px)}#menuButton:active{transform:translateY(0);box-shadow:0 2px 4px rgba(0,0,0,0.1)}#gameMenu{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:20;transition:opacity .3s ease;opacity:0;visibility:hidden}#gameMenu.active{opacity:1;visibility:visible}#gameMenu button{background-color:#4CAF50;color:#fff;padding:15px 30px;border:none;border-radius:10px;cursor:pointer;font-size:1.5em;margin:10px;width:80%;max-width:300px;box-shadow:0 6px 8px rgba(0,0,0,0.2);transition:background-color .3s ease,transform .1s ease}#gameMenu button:hover{background-color:#45a049;transform:translateY(-2px)}#gameMenu button:active{transform:translateY(0);box-shadow:0 3px 5px rgba(0,0,0,0.2)}#gameMenu #closeMenuButton{background-color:#dc3545}#gameMenu #closeMenuButton:hover{background-color:#c82333}</style>
+
+ 
+
+</head>
+
+<body>
+
+
+
+<div id="welcome-message">
+
+Welcome!
+
+</div>
+
+<div id="score">Skittles Down: 0</div>
+
+<div id="click-indicator"></div>
+
+<div id="game-controls">
+
+<button id="menuButton">Menu</button>
+
+</div>
+
+<div id="gameMenu">
+
+<button id="howToPlayButton">How to Play</button>
+
+<div class="slider-container">
+
+<label for="rampDistanceSlider">Far Ramp Distance:</label>
+
+<input type="range" id="rampDistanceSlider" min="0" max="100" value="50">
+
+<span id="rampDistanceValue">50</span>
+
+</div>
+
+<button id="toggleRampsButton">Toggle Ramps</button>
+
+<button id="resetGameMenuButton">Reset Game</button>
+
+<button id="aboutButton">About</button>
+
+<button id="closeMenuButton">Close Menu</button>
+
+</div>
+
+<div id="howToPlayModal">
+
+<div id="howToPlayContent">
+
+<h3>How to Play</h3>
+
+<p>
+
+<strong>Throwing the Ball:</strong>
+
+<br>
+
+**Mouse/Touchpad:** Left-click and drag anywhere on the lane to pick up the ball. Drag your mouse/finger to aim and set the power, then release to throw. A faster, longer drag forward will result in a more powerful throw.
+
+<br>
+
+**Mobile Touch:** Single-tap and drag anywhere on the lane to pick up the ball. Drag your finger to aim and set the power, then release to throw. A faster, longer drag forward will result in a more powerful throw.
+
+</p>
+
+<p>
+
+<strong>Camera Controls:</strong>
+
+<br>
+
+**Mouse/Touchpad:** Right-click and drag to rotate the camera. Scroll to zoom in/out.
+
+<br>
+
+**Mobile Touch:** Use two fingers to drag and rotate the camera. Pinch to zoom in/out.
+
+</p>
+
+<p>
+
+<strong>Keyboard Controls:</strong>
+
+<ul>
+
+<li>**Spacebar:** Reset the ball and skittles to their starting positions.</li>
+
+<li>**Up Arrow (&#8593;):** Throw the ball forward from its current position.</li>
+
+<li>**Left Arrow (&#8592;):** Nudge the ball slightly to the left.</li>
+
+<li>**Right Arrow (&#8594;):** Nudge the ball slightly to the right.</li>
+
+</ul>
+
+</p>
+
+<button id="closeHowToPlayButton">Got It!</button>
+
+</div>
+
+</div>
+
+<div id="aboutModal">
+
+<div id="aboutContent">
+
+<h3>About This Game</h3>
+
+<p>
+
+This is a simple 3D bowling game built using Three.js for rendering and Cannon.js for physics simulation.
+
+<br><br>
+
+It was developed by Gemini AI as a demonstration of interactive web-based 3D applications.
+
+<br><br>
+
+Enjoy knocking down some skittles!
+
+</p>
+
+<button id="closeAboutButton">Close</button>
+
+</div>
+
+</div>
+
+
+
+<canvas id="gameCanvas" tabindex="0"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script><script>
+
+console.log("Script Started! (Using DOMContentLoaded)");
+
+let scene, camera, renderer, orbitControls, world, ballMesh, ballBody, skittleMeshes = [], skittleBodies = [], laneMesh, laneBody, groundMesh, groundBody, farRampMeshes = [], farRampBodies = [], closeRampMeshes = [], closeRampBodies = [];
+
+let rampsVisible = true, farRampZ = -50, mousePosition = new THREE.Vector2(), raycaster = new THREE.Raycaster(), draggingBall = false, dragStartTime, dragStartMousePosition = new THREE.Vector2(), initialBallPosition = new THREE.Vector3(0, 0.5, 8), skittlesDownCount = 0;
+
+let gameCanvas, clickIndicator, menuButton, gameMenu, closeMenuButton, howToPlayButton, toggleRampsButton, resetGameMenuButton, aboutButton, howToPlayModal, closeHowToPlayButton, aboutModal, closeAboutButton, rampDistanceSlider, rampDistanceValueDisplay;
+
+const SKITTLE_HEIGHT = 1.0, SKITTLE_RADIUS_TOP = 0.08, SKITTLE_RADIUS_BOTTOM = 0.12;
+
+let initialized = false;
+
+
+
+// New variable to hold the RockManager instance
+
+let rockManager;
+
+
+
+// Function Aliases for Menu and Modals
+
+function toggleMenu() { gameMenu.classList.toggle('active'); }
+
+function showHowToPlay() { howToPlayModal.classList.add('active'); gameMenu.classList.remove('active'); }
+
+function hideHowToPlay() { howToPlayModal.classList.remove('active'); }
+
+function showAbout() { aboutModal.classList.add('active'); gameMenu.classList.remove('active'); }
+
+function hideAbout() { aboutModal.classList.remove('active'); }
+
+
+
+// Function to Toggle Ramps Visibility
+
+function toggleRampsVisibility() {
+
+  rampsVisible = !rampsVisible;
+
+  farRampMeshes.forEach(mesh => { mesh.visible = rampsVisible; });
+
+  farRampBodies.forEach(body => { body.collisionResponse = rampsVisible; if (!rampsVisible) body.sleep(); else body.wakeUp(); });
+
+  closeRampMeshes.forEach(mesh => { mesh.visible = rampsVisible; });
+
+  closeRampBodies.forEach(body => { body.collisionResponse = rampsVisible; if (!rampsVisible) body.sleep(); else body.wakeUp(); });
+
+  console.log(`Ramps visibility: ${rampsVisible ? 'ON' : 'OFF'}`);
+
+}
+
+
+
+// Function to Reset Ball and Skittles
+
+function resetBallAndSkittles() {
+
+  console.log("Resetting ball and skittles...");
+
+  ballBody.position.copy(initialBallPosition); ballMesh.position.copy(initialBallPosition);
+
+  ballBody.velocity.set(0, 0, 0); ballBody.angularVelocity.set(0, 0, 0);
+
+  ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false;
+
+  draggingBall = false; orbitControls.enabled = true;
+
+  const skittleZStart = -8, skittleRowSpacing = 0.5, skittleColumnSpacing = 0.5, tableHeight = 0.2;
+
+  const skittlePositions = [
+
+    { x: 0, z: skittleZStart }, { x: -skittleColumnSpacing / 2, z: skittleZStart - skittleRowSpacing }, { x: skittleColumnSpacing / 2, z: skittleZStart - skittleRowSpacing },
+
+    { x: -skittleColumnSpacing, z: skittleZStart - skittleRowSpacing * 2 }, { x: 0, z: skittleZStart - skittleRowSpacing * 2 }, { x: skittleColumnSpacing, z: skittleZStart - skittleRowSpacing * 2 },
+
+    { x: -skittleColumnSpacing * 1.5, z: skittleZStart - skittleRowSpacing * 3 }, { x: -skittleColumnSpacing * 0.5, z: skittleZStart - skittleRowSpacing * 3 },
+
+    { x: skittleColumnSpacing * 0.5, z: skittleZStart - skittleRowSpacing * 3 }, { x: skittleColumnSpacing * 1.5, z: skittleZStart - skittleRowSpacing * 3 }
+
+  ];
+
+  skittleBodies.forEach((body, i) => {
+
+    const pos = skittlePositions[i];
+
+    body.position.set(pos.x, tableHeight + SKITTLE_HEIGHT / 2, pos.z);
+
+    body.quaternion.set(0, 0, 0, 1);
+
+    body.velocity.set(0, 0, 0); body.angularVelocity.set(0, 0, 0); body.sleep();
+
+  });
+
+  skittleMeshes.forEach((mesh, i) => {
+
+    const pos = skittlePositions[i];
+
+    mesh.position.set(pos.x, tableHeight + SKITTLE_HEIGHT / 2, pos.z); mesh.rotation.set(0, 0, 0);
+
+  });
+
+  skittlesDownCount = 0; document.getElementById('score').innerText = `Skittles Down: ${skittlesDownCount}`;
+
+}
+
+
+
+// Function to Check Skittles Down
+
+function checkSkittlesDown() {
+
+  let fallenCount = 0, threshold = Math.cos(Math.PI / 4);
+
+  skittleBodies.forEach(body => {
+
+    const upVector = new CANNON.Vec3(0, 1, 0), currentUp = body.quaternion.vmult(upVector);
+
+    if (currentUp.dot(upVector) < threshold) fallenCount++;
+
+  });
+
+  if (fallenCount !== skittlesDownCount) {
+
+    skittlesDownCount = fallenCount;
+
+    document.getElementById('score').innerText = `Skittles Down: ${skittlesDownCount}`;
+
+  }
+
+}
+
+
+
+// Function to Handle Window Resize
+
+function onWindowResize() {
+
+  camera.aspect = window.innerWidth / window.innerHeight;
+
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+}
+
+
+
+// Function to Handle Pointer Down (Mouse/Touch)
+
+function onPointerDown(event) {
+
+  const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+
+  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+
+  const button = event.touches ? 0 : event.button;
+
+
+
+  if (clickIndicator) { clickIndicator.style.backgroundColor = 'red'; setTimeout(() => { clickIndicator.style.backgroundColor = 'gray'; }, 100); }
+
+  if (event.target !== gameCanvas) return;
+
+
+
+  if (button === 2 || (event.touches && event.touches.length > 1)) event.preventDefault(); // Prevent context menu on right click or two-finger touch
+
+
+
+  mousePosition.x = (clientX / window.innerWidth) * 2 - 1;
+
+  mousePosition.y = -(clientY / window.innerHeight) * 2 + 1;
+
+
+
+  if (button === 0) { // Left click or single touch
+
+    draggingBall = true; orbitControls.enabled = false;
+
+    dragStartTime = performance.now(); dragStartMousePosition.copy(mousePosition);
+
+    ballBody.position.copy(initialBallPosition); ballMesh.position.copy(initialBallPosition);
+
+    ballBody.velocity.set(0, 0, 0); ballBody.angularVelocity.set(0, 0, 0);
+
+    ballBody.type = CANNON.Body.KINEMATIC; ballBody.allowSleep = false;
+
+  } else if (button === 2 || (event.touches && event.touches.length > 1)) { // Right click or two-finger touch
+
+    draggingBall = false; orbitControls.enabled = true;
+
+  }
+
+  event.preventDefault();
+
+}
+
+
+
+// Function to Handle Pointer Move (Mouse/Touch)
+
+function onPointerMove(event) {
+
+  const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+
+  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+
+
+
+  mousePosition.x = (clientX / window.innerWidth) * 2 - 1;
+
+  mousePosition.y = -(clientY / window.innerHeight) * 2 + 1;
+
+
+
+  if (draggingBall) {
+
+    raycaster.setFromCamera(mousePosition, camera);
+
+    const planeY = laneMesh.position.y + (ballMesh.geometry.parameters.radius || 0.25);
+
+    const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+
+    const intersectPoint = new THREE.Vector3();
+
+    raycaster.ray.intersectPlane(interactionPlane, intersectPoint);
+
+    if (intersectPoint) { ballMesh.position.copy(intersectPoint); ballBody.position.copy(intersectPoint); }
+
+  }
+
+  event.preventDefault();
+
+}
+
+
+
+// Function to Handle Pointer Up (Mouse/Touch)
+
+function onPointerUp(event) {
+
+  const clientX = event.changedTouches ? event.changedTouches[0].clientX : event.clientX;
+
+  const clientY = event.changedTouches ? event.changedTouches[0].clientY : event.clientY;
+
+  const button = event.changedTouches ? 0 : event.button;
+
+
+
+  if (clickIndicator) { clickIndicator.style.backgroundColor = 'blue'; setTimeout(() => { clickIndicator.style.backgroundColor = 'gray'; }, 100); }
+
+  if (event.target !== gameCanvas) return;
+
+
+
+  if (button === 0 && draggingBall) {
+
+    draggingBall = false; orbitControls.enabled = true; ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false;
+
+    const dragEndTime = performance.now(), dragDuration = dragEndTime - dragStartTime;
+
+    const dragEndMousePosition = new THREE.Vector2((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+
+    const dragVector = new THREE.Vector2().subVectors(dragEndMousePosition, dragStartMousePosition);
+
+    const dragVelocityMagnitude = dragVector.length() / (Math.max(1, dragDuration) / 1000);
+
+    const horizontalForceScale = 10;
+
+    let forwardForceScale = 40;
+
+    if (!event.touches || event.touches.length === 0) { forwardForceScale = 70; } // Adjust for mouse vs touch sensitivity
+
+    const impulse = new CANNON.Vec3(dragVector.x * horizontalForceScale * dragVelocityMagnitude, 0, -dragVector.y * forwardForceScale * dragVelocityMagnitude);
+
+    ballBody.applyImpulse(impulse, ballBody.position);
+
+  } else if (button === 2 || (event.touches && event.touches.length > 1)) {
+
+    orbitControls.enabled = true;
+
+  }
+
+  event.preventDefault();
+
+}
+
+
+
+// Function to Handle Keyboard Input
+
+function onKeyDown(event) {
+
+  const nudgeForce = 0.05, throwForce = 150;
+
+  switch (event.code) {
+
+    case 'Space': resetBallAndSkittles(); break;
+
+    case 'ArrowUp': ballBody.type = CANNON.Body.DYNAMIC; ballBody.allowSleep = false; ballBody.applyImpulse(new CANNON.Vec3(0, 0, -throwForce), ballBody.position); break;
+
+    case 'ArrowLeft': ballBody.applyImpulse(new CANNON.Vec3(-nudgeForce, 0, 0), ballBody.position); break;
+
+    case 'ArrowRight': ballBody.applyImpulse(new CANNON.Vec3(nudgeForce, 0, 0), ballBody.position); break;
+
+  }
+
+}
+
+
+
+// Function to Create Far Ramp
+
+function createFarRamp(width, height, depth, x, y, z, rotationX, rotationY) {
+
+  const geometry = new THREE.BoxGeometry(width, height, depth), material = new THREE.MeshStandardMaterial({ color: 0x663300 });
+
+  const mesh = new THREE.Mesh(geometry, material);
+
+  mesh.position.set(x, y + height / 2, z); mesh.rotation.x = rotationX; mesh.rotation.y = rotationY; mesh.castShadow = true; mesh.receiveShadow = true;
+
+  scene.add(mesh); farRampMeshes.push(mesh);
+
+  const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+
+  const body = new CANNON.Body({ mass: 0, material: new CANNON.Material("rampMaterial") });
+
+  body.addShape(shape); body.position.copy(mesh.position);
+
+  const quaternion = new CANNON.Quaternion(); quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+
+  body.quaternion.copy(quaternion); world.addBody(body); farRampBodies.push(body);
+
+}
+
+
+
+// Function to Create Close Ramp
+
+function createCloseRamp(width, height, depth, x, y, z, rotationX, rotationY) {
+
+  const geometry = new THREE.BoxGeometry(width, height, depth), material = new THREE.MeshStandardMaterial({ color: 0x4B0082 });
+
+  const mesh = new THREE.Mesh(geometry, material);
+
+  mesh.position.set(x, y + height / 2, z); mesh.rotation.x = rotationX; mesh.rotation.y = rotationY; mesh.castShadow = true; mesh.receiveShadow = true;
+
+  scene.add(mesh); closeRampMeshes.push(mesh);
+
+  const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+
+  const body = new CANNON.Body({ mass: 0, material: new CANNON.Material("rampMaterial") });
+
+  body.addShape(shape); body.position.copy(mesh.position);
+
+  const quaternion = new CANNON.Quaternion(); quaternion.setFromEuler(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, 'XYZ');
+
+  body.quaternion.copy(quaternion); world.addBody(body); closeRampBodies.push(body);
+
+}
+
+
+
+// Function to Update Far Ramp Z Position
+
+function updateFarRampZ() {
+
+  const minZ = -80, maxZ = -30;
+
+  farRampZ = minZ + (rampDistanceSlider.value / 100) * (maxZ - minZ);
+
+  rampDistanceValueDisplay.innerText = rampDistanceSlider.value;
+
+  farRampMeshes.forEach((mesh, i) => {
+
+    const originalRelativeZ = mesh.userData.originalRelativeZ || (mesh.position.z - farRampZ);
+
+    if (!mesh.userData.originalRelativeZ) mesh.userData.originalRelativeZ = mesh.position.z - farRampZ;
+
+    const newZ = farRampZ + originalRelativeZ;
+
+    mesh.position.z = newZ; farRampBodies[i].position.z = newZ;
+
+  });
+
+}
+
+
+
+// RockManager Class Definition
+
+class RockManager {
+
+    constructor(scene, world, camera, initialSpawnZ, spawnDistance, removalDistance, numRocks) {
+
+        this.scene = scene;
+
+        this.world = world;
+
+        this.camera = camera;
+
+        this.initialSpawnZ = initialSpawnZ;
+
+        this.spawnDistance = spawnDistance;
+
+        this.removalDistance = removalDistance;
+
+        this.rocks = [];
+
+        this.lastCameraZ = camera.position.z;
+
+
+
+        // Create a material for the rocks
+
+        this.rockMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 }); // Dark grey for rocks
+
+        this.rockPhysicsMaterial = new CANNON.Material("rockMaterial");
+
+
+
+        // Initial population of rocks
+
+        for (let i = 0; i < numRocks; i++) {
+
+            this.createRandomRock(this.initialSpawnZ + Math.random() * spawnDistance);
+
+        }
+
+    }
+
+
+
+    createRandomRock(zPos) {
+
+        const type = Math.random();
+
+        let geometry, shape;
+
+        const scale = Math.random() * 0.8 + 0.5; // Random scale for variety
+
+
+
+        if (type < 0.33) {
+
+            // Sphere
+
+            geometry = new THREE.SphereGeometry(scale * 0.5, 8, 8);
+
+            shape = new CANNON.Sphere(scale * 0.5);
+
+        } else if (type < 0.66) {
+
+            // Box
+
+            geometry = new THREE.BoxGeometry(scale, scale, scale);
+
+            shape = new CANNON.Box(new CANNON.Vec3(scale / 2, scale / 2, scale / 2));
+
+        } else {
+
+            // Dodecahedron (a bit more rock-like)
+
+            geometry = new THREE.DodecahedronGeometry(scale * 0.5);
+
+            shape = new CANNON.Sphere(scale * 0.5); // Approximate with sphere for physics simplicity
+
+        }
+
+
+
+        const mesh = new THREE.Mesh(geometry, this.rockMaterial);
+
+        mesh.castShadow = true;
+
+        mesh.receiveShadow = true;
+
+        this.scene.add(mesh);
+
+
+
+        const body = new CANNON.Body({
+
+            mass: 0, // Static
+
+            material: this.rockPhysicsMaterial,
+
+            collisionResponse: true // Can be toggled if needed
+
+        });
+
+        body.addShape(shape);
+
+        this.world.addBody(body);
+
+
+
+        // Position the rock
+
+        const xPos = (Math.random() - 0.5) * 50; // Spread across a wider area
+
+        mesh.position.set(xPos, -0.5, zPos); // Slightly below ground to avoid floating
+
+        body.position.copy(mesh.position);
+
+
+
+        this.rocks.push({ mesh, body, initialRelativeZ: zPos - this.camera.position.z });
+
+    }
+
+
+
+    update() {
+
+        const cameraZ = this.camera.position.z;
+
+        const deltaZ = cameraZ - this.lastCameraZ;
+
+
+
+        // Check for rocks to recycle/reposition
+
+        this.rocks.forEach(rock => {
+
+            // A rock is "behind" if its Z position is greater than the camera's Z plus removalDistance
+
+            if (rock.mesh.position.z > cameraZ + this.removalDistance) {
+
+                // Reposition the rock far ahead
+
+                const newZ = cameraZ - this.spawnDistance - (Math.random() * this.spawnDistance * 0.5);
+
+                const newX = (Math.random() - 0.5) * 50;
+
+                rock.mesh.position.set(newX, -0.5, newZ);
+
+                rock.body.position.copy(rock.mesh.position);
+
+                rock.body.velocity.set(0, 0, 0);
+
+                rock.body.angularVelocity.set(0, 0, 0);
+
+                rock.body.sleep(); // Put to sleep until hit
+
+            }
+
+        });
+
+
+
+        this.lastCameraZ = cameraZ;
+
+    }
+
+}
+
+
+
+
+
+// Function for Game Initialization
+
+function initializeGame() {
+
+  try {
+
+    if (initialized) return; initialized = true;
+
+
+
+    // Get DOM elements
+
+    gameCanvas = document.getElementById('gameCanvas');
+
+    clickIndicator = document.getElementById('click-indicator');
+
+    menuButton = document.getElementById('menuButton');
+
+    gameMenu = document.getElementById('gameMenu');
+
+    closeMenuButton = document.getElementById('closeMenuButton');
+
+    howToPlayButton = document.getElementById('howToPlayButton');
+
+    toggleRampsButton = document.getElementById('toggleRampsButton');
+
+    resetGameMenuButton = document.getElementById('resetGameMenuButton');
+
+    aboutButton = document.getElementById('aboutButton');
+
+    howToPlayModal = document.getElementById('howToPlayModal');
+
+    closeHowToPlayButton = document.getElementById('closeHowToPlayButton');
+
+    aboutModal = document.getElementById('aboutModal');
+
+    closeAboutButton = document.getElementById('closeAboutButton');
+
+    rampDistanceSlider = document.getElementById('rampDistanceSlider');
+
+    rampDistanceValueDisplay = document.getElementById('rampDistanceValue');
+
+
+
+    // Add event listeners
+
+    if (menuButton) menuButton.addEventListener('click', toggleMenu, false);
+
+    if (closeMenuButton) closeMenuButton.addEventListener('click', toggleMenu, false);
+
+    if (howToPlayButton) howToPlayButton.addEventListener('click', showHowToPlay, false);
+
+    if (closeHowToPlayButton) closeHowToPlayButton.addEventListener('click', hideHowToPlay, false);
+
+    if (toggleRampsButton) toggleRampsButton.addEventListener('click', toggleRampsVisibility, false);
+
+    if (resetGameMenuButton) resetGameMenuButton.addEventListener('click', () => { resetBallAndSkittles(); toggleMenu(); }, false);
+
+    if (aboutButton) aboutButton.addEventListener('click', showAbout, false);
+
+    if (closeAboutButton) closeAboutButton.addEventListener('click', hideAbout, false);
+
+    if (rampDistanceSlider) { rampDistanceSlider.addEventListener('input', updateFarRampZ, false); rampDistanceSlider.value = 50; rampDistanceValueDisplay.innerText = rampDistanceSlider.value; }
+
+
+
+    gameCanvas.focus();
+
+
+
+    // Three.js Scene Setup
+
+    scene = new THREE.Scene(); scene.background = new THREE.Color(0x87ceeb);
+
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); camera.position.set(0, 5, 15);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, canvas: gameCanvas }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true;
+
+
+
+    // Input Event Listeners for Game Canvas
+
+    gameCanvas.addEventListener('mousedown', onPointerDown, false);
+
+    gameCanvas.addEventListener('mousemove', onPointerMove, false);
+
+    gameCanvas.addEventListener('mouseup', onPointerUp, false);
+
+    gameCanvas.addEventListener('touchstart', onPointerDown, { passive: false });
+
+    gameCanvas.addEventListener('touchmove', onPointerMove, { passive: false });
+
+    gameCanvas.addEventListener('touchend', onPointerUp, { passive: false });
+
+    gameCanvas.addEventListener('touchcancel', onPointerUp, { passive: false });
+
+    gameCanvas.addEventListener('contextmenu', event => event.preventDefault()); // Prevent right-click context menu
+
+    document.addEventListener('keydown', onKeyDown, false);
+
+
+
+    // Orbit Controls for Camera
+
+    orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+
+    orbitControls.enableDamping = true; orbitControls.dampingFactor = 0.05; orbitControls.target.set(0, 1, 0);
+
+    orbitControls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+
+    orbitControls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN };
+
+
+
+    // Lighting
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); directionalLight.position.set(5, 10, 5); directionalLight.castShadow = true;
+
+    directionalLight.shadow.mapSize.width = 2048; directionalLight.shadow.mapSize.height = 2048;
+
+    directionalLight.shadow.camera.near = 0.5; directionalLight.shadow.camera.far = 50;
+
+    directionalLight.shadow.camera.left = -10; directionalLight.shadow.camera.right = 10;
+
+    directionalLight.shadow.camera.top = 10; directionalLight.shadow.camera.bottom = -10;
+
+    scene.add(directionalLight);
+
+
+
+    // Cannon.js World Setup
+
+    world = new CANNON.World(); world.gravity.set(0, -9.82, 0); world.broadphase = new CANNON.SAPBroadphase(world); world.allowSleep = true;
+
+
+
+    // Ground
+
+    const groundGeometry = new THREE.PlaneGeometry(50, 50), groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+
+    groundMesh = new THREE.Mesh(groundGeometry, groundMaterial); groundMesh.rotation.x = -Math.PI / 2; groundMesh.receiveShadow = true; scene.add(groundMesh);
+
+    const groundShape = new CANNON.Plane(); groundBody = new CANNON.Body({ mass: 0 }); groundBody.addShape(groundShape); groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); world.addBody(groundBody);
+
+
+
+    // Lane
+
+    const laneWidth = 3, laneDepth = 20, laneHeight = 0.2;
+
+    const laneGeometry = new THREE.BoxGeometry(laneWidth, laneHeight, laneDepth), laneMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+
+    laneMesh = new THREE.Mesh(laneGeometry, laneMaterial); laneMesh.position.y = laneHeight / 2; laneMesh.receiveShadow = true; laneMesh.castShadow = true; scene.add(laneMesh);
+
+    const laneShape = new CANNON.Box(new CANNON.Vec3(laneWidth / 2, laneHeight / 2, laneDepth / 2));
+
+    laneBody = new CANNON.Body({ mass: 0, material: new CANNON.Material("tableMaterial") }); laneBody.addShape(laneShape); laneBody.position.copy(laneMesh.position); world.addBody(laneBody);
+
+
+
+    // Bowling Ball
+
+    const ballRadius = 0.25;
+
+    const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32), ballMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+
+    ballMesh = new THREE.Mesh(ballGeometry, ballMaterial); ballMesh.position.copy(initialBallPosition); ballMesh.castShadow = true; scene.add(ballMesh);
+
+    const ballShape = new CANNON.Sphere(ballRadius), ballPhysicsMaterial = new CANNON.Material("ballMaterial");
+
+    ballBody = new CANNON.Body({ mass: 5, material: ballPhysicsMaterial, angularDamping: 0, linearDamping: 0, allowSleep: false }); ballBody.addShape(ballShape); ballBody.position.copy(ballMesh.position); world.addBody(ballBody);
+
+    ballBody.addEventListener('collide', function(event) { if (draggingBall) { ballBody.velocity.set(0,0,0); ballBody.angularVelocity.set(0,0,0); } });
+
+
+
+    // Create Skittles
+
+    const createSkittle = (x, z) => {
+
+      const skittleGeometry = new THREE.CylinderGeometry(SKITTLE_RADIUS_TOP, SKITTLE_RADIUS_BOTTOM, SKITTLE_HEIGHT, 16), skittleMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+      const skittleMesh = new THREE.Mesh(skittleGeometry, skittleMaterial); skittleMesh.position.set(x, laneHeight + SKITTLE_HEIGHT / 2, z); skittleMesh.castShadow = true; skittleMesh.receiveShadow = true; scene.add(skittleMesh); skittleMeshes.push(skittleMesh);
+
+      const skittleShape = new CANNON.Cylinder(SKITTLE_RADIUS_TOP, SKITTLE_RADIUS_BOTTOM, SKITTLE_HEIGHT, 16);
+
+      const skittleBody = new CANNON.Body({ mass: 0.5, material: new CANNON.Material("skittleMaterial") });
+
+      skittleBody.addShape(skittleShape, new CANNON.Vec3(0, 0, 0), new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2));
+
+      skittleBody.position.copy(skittleMesh.position); skittleBody.quaternion.copy(skittleMesh.quaternion); skittleBody.angularDamping = 0.9; world.addBody(skittleBody); skittleBodies.push(skittleBody);
+
+    };
+
+
+
+    const skittleZStart = -8, skittleRowSpacing = 0.5, skittleColumnSpacing = 0.5;
+
+    createSkittle(0, skittleZStart);
+
+    createSkittle(-skittleColumnSpacing / 2, skittleZStart - skittleRowSpacing); createSkittle(skittleColumnSpacing / 2, skittleZStart - skittleRowSpacing);
+
+    createSkittle(-skittleColumnSpacing, skittleZStart - skittleRowSpacing * 2); createSkittle(0, skittleZStart - skittleRowSpacing * 2); createSkittle(skittleColumnSpacing, skittleZStart - skittleRowSpacing * 2);
+
+    createSkittle(-skittleColumnSpacing * 1.5, skittleZStart - skittleRowSpacing * 3); createSkittle(-skittleColumnSpacing * 0.5, skittleZStart - skittleRowSpacing * 3);
+
+    createSkittle(skittleColumnSpacing * 0.5, skittleZStart - skittleRowSpacing * 3); createSkittle(skittleColumnSpacing * 1.5, skittleZStart - skittleRowSpacing * 3);
+
+
+
+    // Create Far Ramps (Obstacles)
+
+    const numberOfFarRamps = 10;
+
+    for (let i = 0; i < numberOfFarRamps; i++) {
+
+      const rampWidth = Math.random() * 4 + 2, rampHeight = Math.random() * 2 + 1, rampDepth = Math.random() * 4 + 2;
+
+      let rampX; if (Math.random() > 0.5) rampX = Math.random() * 8 + 2; else rampX = -(Math.random() * 8 + 2);
+
+      const initialRelativeZ = Math.random() * 20 - 10, rampZ = farRampZ + initialRelativeZ, rampY = 0;
+
+      const rampRotationX = (Math.random() * 0.4 + 0.1) * (Math.random() > 0.5 ? 1 : -1), rampRotationY = Math.random() * Math.PI * 2;
+
+      createFarRamp(rampWidth, rampHeight, rampDepth, rampX, rampY, rampZ, rampRotationX, rampRotationY);
+
+      farRampMeshes[farRampMeshes.length - 1].userData.originalRelativeZ = initialRelativeZ;
+
+    }
+
+    updateFarRampZ(); // Initial update for ramp positions based on slider
+
+
+
+    // Create Close Ramps (Decorations)
+
+    const numberOfCloseRamps = 6, closeRampBaseZ = 5, closeRampSideOffset = 2.5, closeRampSpacing = 2;
+
+    for (let i = 0; i < numberOfCloseRamps; i++) {
+
+      const width = Math.random() * 1.5 + 1, height = Math.random() * 0.5 + 0.2, depth = Math.random() * 1.5 + 1;
+
+      let xPosition; if (i % 2 === 0) xPosition = -closeRampSideOffset - (Math.random() * 0.5); else xPosition = closeRampSideOffset + (Math.random() * 0.5);
+
+      const zPosition = closeRampBaseZ - (i * closeRampSpacing) - (Math.random() * 1), yPosition = 0;
+
+      const rotationX = Math.PI / 8 + (Math.random() * Math.PI / 16), rotationY = Math.random() * Math.PI / 4 * (Math.random() > 0.5 ? 1 : -1);
+
+      createCloseRamp(width, height, depth, xPosition, yPosition, zPosition, rotationX, rotationY);
+
+    }
+
+
+
+    // Cannon.js Contact Materials
+
+    const ballToTableContact = new CANNON.ContactMaterial(ballPhysicsMaterial, laneBody.material, { friction: 0.01, restitution: 0.6 }); world.addContactMaterial(ballToTableContact);
+
+    const ballToSkittleContact = new CANNON.ContactMaterial(ballPhysicsMaterial, skittleBodies[0].material, { friction: 0.01, restitution: 0.3 }); world.addContactMaterial(ballToSkittleContact);
+
+    const skittleToTableContact = new CANNON.ContactMaterial(skittleBodies[0].material, laneBody.material, { friction: 0.8, restitution: 0.1 }); world.addContactMaterial(stc);
+
+    const ballToRampContact = new CANNON.ContactMaterial(ballPhysicsMaterial, new CANNON.Material("rampMaterial"), { friction: 0.5, restitution: 0.2 }); world.addContactMaterial(ballToRampContact);
+
+    // New: Ball to Rock contact material
+
+    const ballToRockContact = new CANNON.ContactMaterial(ballPhysicsMaterial, new CANNON.Material("rockMaterial"), { friction: 0.8, restitution: 0.1 }); world.addContactMaterial(ballToRockContact);
+
+
+
+
+
+    // Initialize RockManager
+
+    rockManager = new RockManager(scene, world, camera, -50, 100, 50, 50); // initialSpawnZ, spawnDistance, removalDistance, numRocks
+
+
+
+    window.addEventListener('resize', onWindowResize, false);
+
+  } catch (e) { console.error("Error during game initialization:", e); }
+
+}
+
+
+
+// Animation Loop
+
+function animate() {
+
+  requestAnimationFrame(animate);
+
+  if (world) {
+
+    const deltaTime = 1 / 60; world.step(deltaTime);
+
+    ballMesh.position.copy(ballBody.position); ballMesh.quaternion.copy(ballBody.quaternion);
+
+    skittleMeshes.forEach((mesh, i) => { mesh.position.copy(skittleBodies[i].position); mesh.quaternion.copy(skittleBodies[i].quaternion); });
+
+    checkSkittlesDown();
+
+  }
+
+  // Update the RockManager in the animation loop
+
+  if (rockManager) {
+
+    rockManager.update();
+
+  }
+
+  if (orbitControls && renderer && scene && camera) { orbitControls.update(); renderer.render(scene, camera); }
+
+}
+
+
+
+document.addEventListener('DOMContentLoaded', function() { initializeGame(); animate(); });
+
+</script></body></html>
