@@ -1,199 +1,44 @@
-<!doctype html>
-
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Black Hole — Hole.io Lite</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Black Hole Game</title>
 <style>
-  :root{--bg:#071023;--panel:#081a2a;--accent:#ffb86b;--text:#e6eef8}
-  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#041021,#071428);color:var(--text);}
-  .wrap{max-width:980px;margin:18px auto;padding:14px;display:grid;grid-template-columns:1fr 320px;gap:14px}
-  header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}
-  h1{font-size:18px;margin:0}
-  .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border-radius:12px;padding:12px;box-shadow:0 6px 20px rgba(2,6,23,0.6)}
-  canvas{display:block;border-radius:10px;width:100%;height:calc(100vh - 200px);background:radial-gradient(circle at 40% 20%, rgba(255,255,255,0.02), transparent 10%), rgba(0,0,0,0.08)}
-  .sidebar{display:flex;flex-direction:column;gap:12px}
-  .row{display:flex;justify-content:space-between;align-items:center}
-  .big{font-size:20px;font-weight:700}
-  .mutebtn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px;border-radius:10px;color:var(--text)}
-  button{cursor:pointer}
-  .small{font-size:12px;color:#9fb1d6}
-  footer{grid-column:1/-1;margin-top:8px;text-align:center;color:#9fb1d6;font-size:12px}
-  @media(max-width:880px){.wrap{grid-template-columns:1fr;}.sidebar{order:2}}
+body { margin:0; font-family: sans-serif; background: radial-gradient(circle at 50% 50%, #041021, #071428); color: #e6eef8; }
+canvas { display:block; margin: 0 auto; background: transparent; border-radius: 10px; }
+.controls { max-width: 960px; margin: 12px auto; display: flex; justify-content: space-between; }
+button { padding: 8px 12px; border-radius: 6px; border:none; background:#0b1220; color:#e6eef8; cursor:pointer; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>Black Hole — swallow objects to grow</h1>
-    <div class="small">Move the hole (mouse/touch/arrow keys). Eat anything smaller than the hole to grow.</div>
-  </header>  <div class="panel">
-    <canvas id="game" width="800" height="600"></canvas>
-  </div>  <aside class="sidebar">
-    <div class="panel">
-      <div class="row"><div>Score</div><div class="big" id="score">0</div></div>
-      <div class="row small"><div>Size</div><div id="size">32</div></div>
-      <div class="row small"><div>Time</div><div id="time">60</div></div>
-      <div style="height:8px"></div>
-      <div class="row"><button id="startBtn">Start</button><button id="pauseBtn">Pause</button></div>
-      <div style="height:8px"></div>
-      <div class="row"><button class="mutebtn" id="muteBtn">Mute</button><button id="resetBtn">Reset</button></div>
-    </div><div class="panel">
-  <div class="small">Best</div>
-  <div class="big" id="best">0</div>
-  <div style="height:8px"></div>
-  <div class="small">How to play</div>
-  <div class="small">Move the black hole and swallow objects smaller than your current radius. Bigger objects block you — eat smaller ones to grow and tackle bigger ones. Survive and score before time runs out.</div>
+<canvas id="game"></canvas>
+<div class="controls">
+<button id="startBtn">Start</button>
+<button id="resetBtn">Reset</button>
+<div>Score: <span id="score">0</span></div>
+<div>Size: <span id="size">32</span></div>
+<div>Time: <span id="time">60</span></div>
 </div>
-
-  </aside>  <footer class="small">Single-file prototype — WebAudio & Canvas. Best score saved locally.</footer>
-</div><script>
+<script>
 // Config
-const CFG = {
-  timeLimit: 60,
-  startSize: 28,
-  startSpawn: 900,
-  spawnAccel: 0.98,
-  minObj: 6,
-  maxObj: 64,
-  volume: 0.12
-};
+const CFG = { timeLimit:60, startSize:32, spawnRate:800, minObj:6, maxObj:64, volume:0.12 };// Canvas setup const canvas = document.getElementById('game'); const ctx = canvas.getContext('2d'); canvas.width = window.innerWidth * 0.9; canvas.height = window.innerHeight * 0.7; let W = canvas.width, H = canvas.height; window.addEventListener('resize', ()=>{ canvas.width = window.innerWidth0.9; canvas.height = window.innerHeight0.7; W=canvas.width; H=canvas.height; });
 
-// Canvas
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-let W = 800, H = 600;
-function fit(){
-  const rect = canvas.getBoundingClientRect();
-  W = rect.width; H = rect.height;
-  canvas.width = Math.floor(W * devicePixelRatio);
-  canvas.height = Math.floor(H * devicePixelRatio);
-  canvas.style.width = rect.width+'px';
-  canvas.style.height = rect.height+'px';
-  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-}
-window.addEventListener('resize', ()=>{ // make canvas fill panel
-  const parent = canvas.parentElement;
-  canvas.style.height = Math.max(200, window.innerHeight - 220) + 'px';
-  fit();
-});
-// initial sizing
-canvas.style.width = '100%';
-canvas.style.height = Math.max(200, window.innerHeight - 220) + 'px';
-fit();
+// Audio const audioCtx = new (window.AudioContext||window.webkitAudioContext)(); function playPop(freq=320){ const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type='sine'; o.frequency.value=freq; g.gain.value=0.12; o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.08); }
 
-// Audio
-const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-const master = audioCtx.createGain(); master.gain.value = CFG.volume; master.connect(audioCtx.destination);
-let muted=false;
-function plop(freq=320, dur=0.09, gain=0.12){ if(muted) return; const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type='sine'; o.frequency.value=freq; g.gain.value=gain; o.connect(g); g.connect(master); const now=audioCtx.currentTime; g.gain.setValueAtTime(g.gain.value, now); g.gain.exponentialRampToValueAtTime(0.001, now+dur); o.start(now); o.stop(now+dur+0.02); }
-function bigPlop(){ if(muted) return; const now=audioCtx.currentTime; [180,260,360].forEach((f,i)=>{ const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type=i===1?'sine':'triangle'; o.frequency.value=f; g.gain.value=0.05; o.connect(g); g.connect(master); o.start(now+i*0.02); g.gain.exponentialRampToValueAtTime(0.001, now+0.6); o.stop(now+0.62); }); }
+// Game state let hole = {x:W/2,y:H/2,r:CFG.startSize, speed:5}; let objects = []; let game = {running:false, score:0, timeLeft:CFG.timeLimit, spawnTimer:0};
 
-// Game state
-let objects = []; // {x,y,r,vx,vy,color,mass}
-let hole = {x:W/2,y:H/2,r:CFG.startSize};
-let mouse = {x:W/2,y:H/2,down:false};
-let game = {running:false,timeLeft:CFG.timeLimit,score:0,spawnTimer:0,spawnRate:CFG.startSpawn};
-try{ game.best = Number(localStorage.getItem('bh_best')||0);}catch(e){game.best=0}
-updateUI();
+// UI elements const scoreEl = document.getElementById('score'); const sizeEl = document.getElementById('size'); const timeEl = document.getElementById('time');
 
-// spawn objects
-function spawn(){
-  const r = Math.round(Math.random()*(CFG.maxObj-CFG.minObj)+CFG.minObj);
-  // spawn at random edge
-  const edge = Math.floor(Math.random()*4);
-  let x,y;
-  if(edge===0){ x = -r; y = Math.random()*H; }
-  else if(edge===1){ x = W + r; y = Math.random()*H; }
-  else if(edge===2){ x = Math.random()*W; y = -r; }
-  else { x = Math.random()*W; y = H + r; }
-  // velocity towards center-ish
-  const angle = Math.atan2(H/2 - y, W/2 - x) + (Math.random()-0.5)*0.8;
-  const speed = 0.2 + Math.random()*1.2;
-  const vx = Math.cos(angle)*speed; const vy = Math.sin(angle)*speed;
-  const col = `hsl(${Math.floor(Math.random()*360)},65%,60%)`;
-  objects.push({x,y,r,vx,vy,color:col});
-}
+// Input let keys = {}; window.addEventListener('keydown', e=>{ keys[e.key]=true; }); window.addEventListener('keyup', e=>{ keys[e.key]=false; }); canvas.addEventListener('mousemove', e=>{ hole.x = e.offsetX; hole.y = e.offsetY; });
 
-// game loop
-let last = performance.now();
-function loop(now){
-  const dt = Math.min(60,(now-last))/1000; last = now;
-  if(game.running){
-    game.timeLeft -= dt;
-    game.spawnTimer += dt*1000;
-    if(game.spawnTimer > game.spawnRate){ game.spawnTimer = 0; spawn(); game.spawnRate = Math.max(220, game.spawnRate * CFG.spawnAccel); }
-    // update objects
-    objects.forEach(o=>{ o.x += o.vx*60*dt; o.y += o.vy*60*dt; // slight wander
-      o.vx *= 0.999; o.vy *= 0.999; });
-    // collision: objects with hole
-    for(let i=objects.length-1;i>=0;i--){ const o = objects[i]; const d = Math.hypot(o.x-hole.x, o.y-hole.y); if(d < hole.r - o.r*0.6){ // swallowed
-        objects.splice(i,1); const gain = Math.round(o.r*0.8 + (hole.r*0.12)); game.score += gain; hole.r += Math.max(1, o.r*0.18); plop(260 + o.r*2, 0.08, 0.08);
-      } else if(d < hole.r + o.r){ // blocked - bounce back a bit
-        // small push
-        const ang = Math.atan2(o.y-hole.y, o.x-hole.x);
-        o.vx += Math.cos(ang)*0.6; o.vy += Math.sin(ang)*0.6;
-      }
-    }
-    // timeout
-    if(game.timeLeft <= 0) endGame();
-  }
-  render();
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
+// Spawn object function spawn(){ const r = Math.random()*(CFG.maxObj-CFG.minObj)+CFG.minObj; const x = Math.random()*W, y = Math.random()*H; const color = hsl(${Math.random()*360},60%,60%); objects.push({x,y,r,color}); }
 
-// rendering
-function render(){
-  ctx.clearRect(0,0,W,H);
-  // starfield
-  for(let i=0;i<3;i++){ ctx.fillStyle='rgba(255,255,255,0.02)'; ctx.fillRect(0, i*30, W, 1); }
-  // objects
-  objects.forEach(o=>{
-    ctx.beginPath(); ctx.fillStyle = o.color; ctx.globalAlpha = 1; ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.fill();
-    // rim
-    ctx.lineWidth = Math.max(1, o.r*0.08); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.stroke();
-  });
-  // hole (drawn last so it overlaps)
-  const g = ctx.createRadialGradient(hole.x - hole.r*0.2, hole.y - hole.r*0.2, hole.r*0.1, hole.x, hole.y, hole.r*1.2);
-  g.addColorStop(0,'rgba(0,0,0,0.8)'); g.addColorStop(0.6,'rgba(0,0,0,0.95)'); g.addColorStop(1,'rgba(0,0,0,1)');
-  ctx.beginPath(); ctx.fillStyle = g; ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI*2); ctx.fill();
-  // subtle rim
-  ctx.lineWidth = Math.max(2, hole.r*0.08); ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.stroke();
-  // draw pupil
-  ctx.beginPath(); ctx.fillStyle = 'rgba(255,255,255,0.02)'; ctx.arc(hole.x - hole.r*0.15, hole.y - hole.r*0.15, Math.max(6, hole.r*0.28), 0, Math.PI*2); ctx.fill();
-  ctx.globalAlpha = 1;
-}
+// Game loop let last = performance.now(); function loop(now){ const dt = (now-last)/1000; last = now; if(game.running){ game.timeLeft -= dt; if(game.timeLeft<=0){ game.running=false; return; } // move hole if(keys['ArrowUp']) hole.y -= hole.speed; if(keys['ArrowDown']) hole.y += hole.speed; if(keys['ArrowLeft']) hole.x -= hole.speed; if(keys['ArrowRight']) hole.x += hole.speed; hole.x = Math.max(hole.r, Math.min(W-hole.r, hole.x)); hole.y = Math.max(hole.r, Math.min(H-hole.r, hole.y)); // spawn objects game.spawnTimer += dt1000; if(game.spawnTimer>CFG.spawnRate){ game.spawnTimer=0; spawn(); } // collision for(let i=objects.length-1;i>=0;i--){ const o = objects[i]; const d = Math.hypot(o.x-hole.x,o.y-hole.y); if(d<hole.r){ if(o.r<=hole.r){ hole.r += o.r0.1; game.score += Math.round(o.r); playPop(); objects.splice(i,1); } } } } render(); requestAnimationFrame(loop); }
 
-// interaction
-canvas.addEventListener('pointermove', e=>{ const r = canvas.getBoundingClientRect(); hole.x = (e.clientX - r.left); hole.y = (e.clientY - r.top); });
-canvas.addEventListener('pointerdown', e=>{ mouse.down = true; });
-canvas.addEventListener('pointerup', e=>{ mouse.down = false; });
-// keyboard
-window.addEventListener('keydown', e=>{
-  const speed = 8; if(e.key==='ArrowLeft') hole.x -= speed; if(e.key==='ArrowRight') hole.x += speed; if(e.key==='ArrowUp') hole.y -= speed; if(e.key==='ArrowDown') hole.y += speed; });
+function render(){ ctx.clearRect(0,0,W,H); // hole ctx.beginPath(); ctx.arc(hole.x,hole.y,hole.r,0,Math.PI2); ctx.fillStyle='black'; ctx.fill(); // objects objects.forEach(o=>{ ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI2); ctx.fillStyle=o.color; ctx.fill(); }); // UI update scoreEl.textContent = game.score; sizeEl.textContent = Math.floor(hole.r); timeEl.textContent = Math.max(0, Math.ceil(game.timeLeft)); }
 
-// UI
-const scoreEl = document.getElementById('score');
-const sizeEl = document.getElementById('size');
-const timeEl = document.getElementById('time');
-const bestEl = document.getElementById('best');
-function updateUI(){ scoreEl.textContent = Math.floor(game.score); sizeEl.textContent = Math.floor(hole.r); timeEl.textContent = Math.max(0, Math.ceil(game.timeLeft)); bestEl.textContent = game.best; }
-setInterval(updateUI, 120);
+// Controls function start(){ if(audioCtx.state==='suspended') audioCtx.resume(); game.running=true; game.score=0; game.timeLeft=CFG.timeLimit; hole.r=CFG.startSize; objects=[]; requestAnimationFrame(loop); } document.getElementById('startBtn').addEventListener('click', start); document.getElementById('resetBtn').addEventListener('click', ()=>{ game.running=false; start(); });
 
-function start(){ game.running = true; game.timeLeft = CFG.timeLimit; game.score = 0; objects = []; hole.r = CFG.startSize; game.spawnRate = CFG.startSpawn; requestAnimationFrame(loop); }
-function pause(){ game.running = !game.running; document.getElementById('pauseBtn').textContent = game.running? 'Pause' : 'Resume'; }
-function endGame(){ game.running = false; bigPlop(); if(game.score > game.best){ game.best = Math.floor(game.score); try{ localStorage.setItem('bh_best', game.best);}catch(e){} } updateUI(); }
-
-// controls
-document.getElementById('startBtn').addEventListener('click', ()=>{ if(audioCtx.state==='suspended') audioCtx.resume(); start(); document.getElementById('startBtn').textContent='Restart'; });
-document.getElementById('pauseBtn').addEventListener('click', ()=>{ pause(); });
-document.getElementById('resetBtn').addEventListener('click', ()=>{ game.running=false; game.score=0; hole.r = CFG.startSize; objects = []; updateUI(); });
-const muteBtn = document.getElementById('muteBtn'); muteBtn.addEventListener('click', ()=>{ muted = !muted; muteBtn.textContent = muted? 'Unmute' : 'Mute'; master.gain.value = muted? 0 : CFG.volume; });
-
-// unlock audio on first gesture for mobile
-window.addEventListener('touchstart', ()=>{ if(audioCtx.state==='suspended') audioCtx.resume(); }, {once:true});
-
-</script></body>
+</script>
+</body>
 </html>
