@@ -3,20 +3,37 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Power Wash Master: Refactored Edition</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Emojiwash: Swipe to Clean</title>
+    <!-- Tailwind CSS script removed as requested -->
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        /* --- GENERAL SETUP & TYPOGRAPHY --- */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+
+        :root {
+            /* Color Palette */
+            --color-bg-dark: #0f172a; /* Slate-900 */
+            --color-panel-dark: #1e293b; /* Slate-800 */
+            --color-border: #334155; /* Slate-700 */
+            --color-text-light: #f1f5f9; /* Slate-100 */
+            --color-text-medium: #94a3b8; /* Slate-400 */
+            --color-canvas-bg: #475569; /* Slate-600 */
+
+            /* Action Colors */
+            --color-primary-purple: #9333ea; /* Purple-600 */
+            --color-primary-purple-hover: #7e22ce; /* Purple-700 */
+        }
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #1a202c;
+            background-color: var(--color-bg-dark);
             display: flex;
             justify-content: center;
             align-items: flex-start;
             min-height: 100vh;
             padding: 20px;
+            margin: 0;
+            color: var(--color-text-light);
         }
 
         #game-container {
@@ -27,24 +44,93 @@
             max-width: 900px;
         }
 
-        #progressBarContainer {
-            width: 100%;
-            background-color: #2d3748;
-            padding: 10px 20px;
-            border-radius: 12px 12px 0 0;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-            border: 4px solid #4a5568;
-            border-bottom: none;
+        h1 {
+            font-size: 2.25rem; /* 36px */
+            font-weight: 800; /* Extra bold */
+            text-align: center;
+            margin-bottom: 1rem;
+            letter-spacing: 0.025em; /* Tracking-wider */
         }
+        
+        h2 {
+            font-weight: 600;
+        }
+
+        /* --- PANELS & LAYOUT --- */
+
+        .panel-style {
+            background-color: var(--color-panel-dark);
+            padding: 20px;
+            border: 1px solid var(--color-border);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        #progressBarContainer {
+            /* Inherits panel-style properties */
+            padding: 15px 20px;
+            border-radius: 12px 12px 0 0;
+            border-bottom: none;
+            background-color: var(--color-panel-dark);
+            border: 4px solid var(--color-border);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        .progress-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        #stageTitle {
+            font-size: 0.875rem; /* 14px */
+            font-weight: 700;
+            color: var(--color-text-medium);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* --- PROGRESS BAR --- */
+
+        #progress-bar-wrapper {
+            width: 100%;
+            background-color: #374151; /* Gray-700 */
+            height: 24px;
+            border-radius: 9999px; /* Full rounded */
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6); /* Inner shadow */
+        }
+
+        #progressBar {
+            height: 100%;
+            transition: width 0.3s ease-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem; /* 12px */
+            font-weight: 700;
+            color: white;
+            min-width: 28px; /* Ensure text is visible even at low progress */
+        }
+
+        /* Progress Bar Color Classes (Controlled by JS) */
+        .progress-yellow { background-color: #f59e0b; }
+        .progress-indigo { background-color: #6366f1; }
+        .progress-blue { background-color: #3b82f6; }
+        .progress-green { background-color: #10b981; }
+
+        /* --- CANVAS --- */
 
         #canvas-wrapper {
             position: relative;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
             overflow: hidden;
             width: 100%;
-            background-color: #374151;
+            background-color: var(--color-canvas-bg);
             padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
-            border: 4px solid #4a5568;
+            border: 4px solid var(--color-border);
             border-top: none;
             border-radius: 0 0 12px 12px;
         }
@@ -58,82 +144,207 @@
             cursor: crosshair;
         }
 
-        /* Optional gentle glow animation for the reset button when ready */
-        @keyframes pulseGlow {
-            0%, 100% { box-shadow: 0 0 0px rgba(255,255,255,0); transform: scale(1); }
-            50% { box-shadow: 0 0 20px rgba(255,255,255,0.18); transform: scale(1.03); }
-        }
-        .glow {
-            animation: pulseGlow 2s infinite;
-        }
+        /* --- CONTROLS --- */
 
         .tool-controls-panel {
-            background-color: #2d3748;
-            padding: 20px;
+            /* Inherits panel-style properties */
             border-radius: 12px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
-        .status-panel {
-            background-color: #2d3748;
-            padding: 16px;
-            border-radius: 12px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        .controls-flex {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .control-group h2 {
+            font-size: 1.125rem; /* 18px */
+            color: var(--color-text-medium);
+            margin-bottom: 0.5rem;
         }
 
         .control-button {
-            transition: all 0.2s;
+            transition: all 0.2s ease-in-out;
             cursor: pointer;
+            border: none;
+            outline: none;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            padding: 0.75rem 1.5rem; /* px-6 py-3 */
+            font-size: 1.125rem; /* text-lg */
+            border-radius: 9999px; /* full rounded */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
+        }
+
+        #nozzle-cycle-button {
+            background-color: var(--color-primary-purple);
+            color: white;
+        }
+        #nozzle-cycle-button:hover {
+            background-color: var(--color-primary-purple-hover);
+        }
+
+        /* Knob Display */
+        .knob-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        #knob-display {
+            background-color: #1f2937; /* Gray-800 */
+            font-size: 1.25rem; /* text-xl */
+            font-weight: 800; /* font-extrabold */
+            color: #2dd4bf; /* Teal-400 */
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            min-width: 140px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.05em; /* tracking-wider */
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8); /* Inner shadow */
+        }
+
+        .knob-arrow {
+            background-color: #374151; /* Gray-700 */
+            color: white;
+            font-size: 1.25rem;
+            padding: 0;
+            width: 48px;
+            height: 48px;
+            border-radius: 9999px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.2s;
+        }
+        .knob-arrow:hover:not(:disabled) {
+            background-color: #4b5563; /* Gray-600 */
+        }
+        .knob-arrow:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* --- RESET/NEXT BUTTON (The Circle Button) --- */
+        #reset-button {
+            border: none;
+            outline: none;
+            transition: all 0.3s ease-in-out;
+            width: 40px; /* w-10 */
+            height: 40px; /* h-10 */
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            flex-shrink: 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .button-red {
+            background-color: #ef4444; /* Red-500 */
+        }
+        .button-red:hover {
+            background-color: #dc2626; /* Red-600 */
+        }
+
+        .button-green {
+            background-color: #10b981; /* Green-500 */
+        }
+        .button-green:hover {
+            background-color: #059669; /* Green-600 */
+        }
+
+        /* Gentle glow animation for the next car button */
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 0px var(--color-text-light); transform: scale(1); }
+            50% { box-shadow: 0 0 15px rgba(255, 255, 200, 0.8); transform: scale(1.05); }
+        }
+        .glow {
+            animation: pulseGlow 1.8s infinite;
+        }
+
+        /* --- STATUS MESSAGE --- */
+        .status-panel {
+            /* Inherits panel-style properties */
+            border-radius: 12px;
+        }
+        #status-message-box {
+            background-color: #1f2937; /* Gray-800 */
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+        }
+        #statusMessage {
+            font-size: 0.875rem; /* text-sm */
+            color: #facc15; /* Yellow-400 */
+            font-weight: 500;
+        }
+
+        /* --- RESPONSIVENESS --- */
+        @media (min-width: 768px) {
+            .controls-flex {
+                flex-direction: row;
+            }
         }
     </style>
 </head>
 <body class="antialiased">
 
     <div id="game-container">
-        <h2 class="text-3xl font-extrabold text-white text-center mb-4">
-            Emojiwash: Swipe to clean!
-        </h2>
+        <h1>Emojiwash: Swipe to Clean!</h1>
 
+        <!-- Progress Bar Container -->
         <div id="progressBarContainer">
-            <div class="flex items-center justify-between gap-3 mb-2">
-                                
-                <h2 class="text-sm font-bold text-gray-200 truncate" id="stageTitle">
-                    Current Stage: Pre-Soak
-                </h2>
-
+            <div class="progress-header">
+                <h2 id="stageTitle">Current Stage: Pre-Soak</h2>
+ 
             </div>
 
-            <div class="progress-bar-container">
-                <div id="progressBar" class="progress-bar bg-yellow-500" style="width: 0%;">0%</div>
+            <!-- Progress Bar Wrapper -->
+            <div id="progress-bar-wrapper">
+                <div id="progressBar" class="progress-yellow" style="width: 0%;">0%</div>
             </div>
         </div>
 
         <div id="canvas-wrapper">
             <canvas id="gameCanvas"></canvas>
         </div>
-<button id="reset-button"
-                        class="flex items-center justify-center text-white rounded-full shadow-xl transition-all duration-300
-                               bg-red-500 hover:bg-red-600 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16"
-                        title="Reset / Next">
-                    </button>
-        <div class="tool-controls-panel mt-4">
-            <div class="flex flex-col md:flex-row justify-around items-center gap-6">
+               <!-- Reset/Next Button -->
+                <button id="reset-button" class="button-red" title="Reset Progress">
+                    <span style="font-size: 1.25rem;">&#x21BB;</span>
+                </button>
+        <!-- TOOL CONTROLS -->
+        <div class="tool-controls-panel panel-style">
+            <div class="controls-flex">
 
-                <div class="flex flex-col items-center">
-                    <h2 class="text-lg font-bold text-gray-300 mb-2">Nozzle Cycle</h2>
-                    <button id="nozzle-cycle-button" class="control-button nozzle-cycle bg-purple-500 text-white hover:bg-purple-600 px-6 py-3 text-lg rounded-lg">
-                        <span class="text-xl mr-2" id="nozzle-icon">🎯</span>
+                <!-- Nozzle Cycle -->
+                <div class="control-group">
+                    <h2>Nozzle Type</h2>
+                    <button id="nozzle-cycle-button" class="control-button">
+                        <span style="font-size: 1.25rem; margin-right: 8px;" id="nozzle-icon">🎯</span>
                         <span id="nozzle-name">Wide</span>
                     </button>
                 </div>
 
-                <div class="flex flex-col items-center">
-                    <h2 class="text-lg font-bold text-gray-300 mb-2">Car Wash Tool</h2>
-                    <div class="flex items-center gap-3">
-                        <button id="knob-previous" class="knob-arrow control-button bg-gray-700 text-white text-xl p-2 rounded-full h-12 w-12 flex items-center justify-center">
-                            &lt;
+                <!-- Car Wash Tool (Stage Knob) -->
+                <div class="control-group">
+                    <h2>Cycle Tool</h2>
+                    <div class="knob-wrapper">
+                        <button id="knob-previous" class="knob-arrow" title="Previous Stage">
+                            &#x25C0; <!-- Left Triangle -->
                         </button>
-                        <div id="knob-display" class="knob-display bg-gray-800 text-xl font-bold text-green-400 py-3 px-6 rounded-lg min-w-[140px] text-center">
+                        <div id="knob-display">
                             PRE-SOAK
                         </div>
                     </div>
@@ -141,19 +352,19 @@
             </div>
         </div>
 
-        <div class="status-panel">
-            <div id="status-message-box" class="bg-gray-800 p-3 rounded-lg text-center shadow-inner">
-                <p id="statusMessage" class="text-sm text-yellow-400 font-medium">Loading...</p>
+        <!-- STATUS MESSAGE -->
+        <div class="status-panel panel-style">
+            <div id="status-message-box">
+                <p id="statusMessage">Loading...</p>
             </div>
         </div>
     </div>
 
     <script type="module">
-        // --- Firebase Setup (Minimal Boilerplate) ---
-        // Removed Firebase imports and initialization to ensure compatibility
-        // with environments like htmlpreview.github.io where global variables
-        // for configuration are not defined.
-        // --- End Firebase Setup ---
+        // --- Core Firebase Removal Notice ---
+        // Firebase initialization code has been permanently removed to ensure compatibility
+        // with htmlpreview.github.io and other unmanaged environments.
+        // --- End Firebase Removal Notice ---
 
         // Canvas + contexts
         const canvas = document.getElementById('gameCanvas');
@@ -196,11 +407,11 @@
                 wax: { color: 'rgba(255, 223, 0, 0.6)', speed: 0.5, name: 'Wax', cleanColor: 'rgba(255, 223, 0, 1)' }
             },
             stages: {
-                dirty: { title: 'Stage 1: Pre-Soak (Dirt Removal)', tool: 'pre-soak', barColor: 'bg-yellow-500', message: `Use the **Pre-Soak** tool to remove thick mud and grime. (Advancement possible at ${ADVANCEMENT_THRESHOLD}%).` },
-                foaming: { title: 'Stage 2: Suds Application', tool: 'suds', barColor: 'bg-indigo-500', message: `Apply the **Suds** tool to cover the car completely with foam (apply until ${ADVANCEMENT_THRESHOLD}%).` },
-                sudded: { title: 'Stage 3: Rinsing (Foam Removal)', tool: 'rinse', barColor: 'bg-blue-500', message: `Use the **Rinse** tool to completely wash off all the suds (until ${ADVANCEMENT_THRESHOLD}% is removed).` },
-                waxing: { title: 'Stage 4: Waxing Application', tool: 'wax', barColor: 'bg-green-600', message: `Use the **Wax** tool to apply a coat of high-gloss protective wax (apply until ${ADVANCEMENT_THRESHOLD}% is covered).` },
-                complete: { title: 'Job Complete 🌟', tool: 'wax', barColor: 'bg-green-600', message: '🌟 **PERFECT SHINE!** The car is spotless! Click **NEXT CAR** to start a new job.' }
+                dirty: { title: 'Stage 1: Pre-Soak (Dirt Removal)', tool: 'pre-soak', barColorClass: 'progress-yellow', message: `Use the **Pre-Soak** tool to remove thick mud and grime. (Advancement possible at ${ADVANCEMENT_THRESHOLD}%).` },
+                foaming: { title: 'Stage 2: Suds Application', tool: 'suds', barColorClass: 'progress-indigo', message: `Apply the **Suds** tool to cover the car completely with foam (apply until ${ADVANCEMENT_THRESHOLD}%).` },
+                sudded: { title: 'Stage 3: Rinsing (Foam Removal)', tool: 'rinse', barColorClass: 'progress-blue', message: `Use the **Rinse** tool to completely wash off all the suds (until ${ADVANCEMENT_THRESHOLD}% is removed).` },
+                waxing: { title: 'Stage 4: Waxing Application', tool: 'wax', barColorClass: 'progress-green', message: `Use the **Wax** tool to apply a coat of high-gloss protective wax (apply until ${ADVANCEMENT_THRESHOLD}% is covered).` },
+                complete: { title: 'Job Complete 🌟', tool: 'wax', barColorClass: 'progress-green', message: '🌟 **PERFECT SHINE!** The car is spotless! Click the **NEXT CAR** button to start a new job.' }
             }
         };
 
@@ -231,7 +442,6 @@
             lastX: 0,
             lastY: 0,
 
-            // NEW: base shape alpha sum for normalization and foam target
             baseShapeAlpha: 1
         };
 
@@ -286,7 +496,9 @@
             const nozzle = CONFIG.nozzles[state.currentNozzle];
             targetCtx.beginPath();
             if (nozzle.shape === 'ellipse') {
-                targetCtx.ellipse(x, y, radius * nozzle.widthRatio, radius / nozzle.widthRatio, 0, 0, Math.PI * 2);
+                // Draw an ellipse with a slight rotation to emulate a fan/jet spray
+                const rotation = -Math.PI / 4; // 45 degrees
+                targetCtx.ellipse(x, y, radius * nozzle.widthRatio, radius / nozzle.widthRatio, rotation, 0, Math.PI * 2);
             } else {
                 targetCtx.arc(x, y, radius, 0, Math.PI * 2);
             }
@@ -571,15 +783,19 @@
             if (direction === 1) { // Forward
                 state.cleaningPercentage = 0;
                 if (newStageName === 'sudded') {
+                    // Save foam data to track how much foam we need to remove
                     state.savedFoamImageData = foamCtx.getImageData(0, 0, foamCanvas.width, foamCanvas.height);
                 } else if (newStageName === 'waxing') {
+                    // Clear the canvas for waxing, keeping only the base shape/emoji
                     foamCtx.clearRect(0, 0, foamCanvas.width, canvas.height);
                 } else if (newStageName === 'complete') {
                     applyFinalWaxGradient();
                     state.cleaningPercentage = 100;
                 }
             } else { // Backward
+                // Handle reversing state (less critical for simple game loop)
                 if (state.currentStage === 'waxing' && state.savedFoamImageData) {
+                    // Put foam back if reverting from rinse to foam
                     foamCtx.putImageData(state.savedFoamImageData, 0, 0);
                 } else if (state.currentStage === 'foaming') {
                     state.savedFoamImageData = null;
@@ -614,7 +830,7 @@
 
             const driveOffComplete = () => {
                 // 2. Setup next car with increased difficulty
-                state.dirtMultiplier = Math.max(1.0, state.dirtMultiplier * 2.0);
+                state.dirtMultiplier = Math.max(1.0, state.dirtMultiplier * 0.7 + 0.3); // Smoother multiplier increase
                 setupCarContent();
 
                 // 3. Drive-in (Enters Right)
@@ -644,6 +860,7 @@
 
             const elapsed = timestamp - state.carAnimationTimestamp;
             let progress = Math.min(1, elapsed / CAR_ANIMATION_DURATION);
+            // Ease-in-out function
             let easedProgress = (progress < 0.5) ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
             state.carXOffset = state.carAnimationStartOffset + (state.carAnimationEndOffset - state.carAnimationStartOffset) * easedProgress;
@@ -663,7 +880,7 @@
             }
         }
 
-        // --- UI and Event Handlers ---
+        // --- UI and Event Handlers (Updated for Pure CSS) ---
 
         function updateUI() {
             const currentInfo = CONFIG.stages[state.currentStage];
@@ -675,37 +892,41 @@
             nozzleIcon.textContent = currentNozzleData.icon;
             knobDisplay.textContent = currentInfo.tool.toUpperCase();
 
+            // Only allow cycling backward from stage 1 onwards
             knobPrevious.disabled = currentStageIndex === 0 || state.carAnimationActive;
 
+            // Progress Bar Update
             progressBar.style.width = `${state.cleaningPercentage.toFixed(2)}%`;
             progressBar.textContent = `${Math.floor(state.cleaningPercentage)}%`;
 
-            // update bar color via classes (remove old and add new)
-            document.querySelectorAll('.progress-bar').forEach(bar => {
-                bar.className = 'progress-bar h-full transition-all duration-300 ease-out flex items-center justify-center text-xs font-bold text-white ' + currentInfo.barColor;
-            });
+            // Update bar color dynamically by manipulating dedicated CSS classes
+            const colorClasses = Object.values(CONFIG.stages).map(s => s.barColorClass);
+            progressBar.classList.remove(...colorClasses);
+            progressBar.classList.add(currentInfo.barColorClass);
+
 
             stageTitle.textContent = `${currentInfo.title} (Job Multiplier: ${state.dirtMultiplier.toFixed(1)}x)`;
 
             // Update reset button appearance and interactivity
+            const baseClasses = ['button-red', 'button-green', 'glow'];
+            resetButton.classList.remove(...baseClasses);
+            resetButton.disabled = state.carAnimationActive;
+
+
             if (state.currentStage === 'complete') {
-                // Next Car: Green Right Arrow (SVG to ensure direction)
+                // Next Car: Green Right Arrow (SVG)
+                // Using an inline SVG for the arrow
                 resetButton.innerHTML = `
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                      <path d="M5 12h14" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                      <path d="M13 5l7 7-7 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M14 5l7 7-7 7M4 12h17" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>`;
-                resetButton.className = 'flex items-center justify-center text-white rounded-full shadow-xl transition-all duration-300 bg-green-500 hover:bg-green-600 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 glow';
-                resetButton.disabled = state.carAnimationActive;
+                resetButton.classList.add('button-green', 'glow');
                 resetButton.title = 'Next Car';
             } else {
-                // Reset Dirt: Red Loopback Icon
-                resetButton.innerHTML = '<span class="text-2xl">&#x21BB;</span>';
-                resetButton.className = 'flex items-center justify-center text-white rounded-full shadow-xl transition-all duration-300 bg-red-500 hover:bg-red-600 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16';
-                resetButton.disabled = state.carAnimationActive;
-                resetButton.title = 'Reset / Next';
-                // remove glow just in case
-                resetButton.classList.remove('glow');
+                // Reset Dirt: Red Loopback Icon (HTML Entity)
+                resetButton.innerHTML = '<span style="font-size: 1.25rem;">&#x21BB;</span>';
+                resetButton.classList.add('button-red');
+                resetButton.title = 'Reset Progress';
             }
 
             statusMessage.innerHTML = `${currentInfo.message} ${currentStageIndex < CONFIG.STAGE_ORDER.length - 1 ? ` **(Release mouse/finger to advance when ${ADVANCEMENT_THRESHOLD}% is reached)**` : ''}`;
@@ -713,8 +934,15 @@
 
         function resizeCanvas() {
             const container = document.getElementById('canvas-wrapper');
-            canvas.width = container.clientWidth;
-            canvas.height = container.clientHeight;
+            // Recalculate aspect ratio based on 16:9 for responsive height
+            const containerWidth = container.clientWidth;
+            const containerHeight = containerWidth * (9 / 16);
+            
+            // Note: The canvas wrapper uses padding-bottom trick for aspect ratio,
+            // so we only need to set the canvas dimensions to fill the wrapper.
+
+            canvas.width = containerWidth;
+            canvas.height = containerHeight;
 
             [baseEmojiCanvas, dirtCanvas, foamCanvas].forEach(c => {
                 c.width = canvas.width;
@@ -744,8 +972,7 @@
             state.animationFrameId = requestAnimationFrame(gameLoop);
         }
 
-        // Particle and Sparkle Animation Helpers
-
+        // Particle and Sparkle Animation Helpers (No changes needed here)
         function updateAndDrawParticles() {
             ctx.save();
             state.sprayParticles = state.sprayParticles.filter(p => {
@@ -874,6 +1101,7 @@
                 state.isWashing = false;
                 state.sprayParticles = [];
 
+                // Check for stage advancement upon stopping wash
                 const currentInfo = CONFIG.stages[state.currentStage];
                 const isTargetMet = state.cleaningPercentage >= ADVANCEMENT_THRESHOLD;
 
