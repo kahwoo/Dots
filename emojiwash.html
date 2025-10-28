@@ -94,7 +94,6 @@
             Emojiwash: Swipe to clean!
         </h2>
 
-        <!-- Progress + Reset (reset placed top-leftht of header) -->
         <div id="progressBarContainer">
             <div class="flex items-center justify-between gap-3 mb-2">
                                 
@@ -116,13 +115,10 @@
                         class="flex items-center justify-center text-white rounded-full shadow-xl transition-all duration-300
                                bg-red-500 hover:bg-red-600 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16"
                         title="Reset / Next">
-                    <!-- Content set by JS -->
-                </button>
-        <!-- TOOL CONTROLS -->
+                    </button>
         <div class="tool-controls-panel mt-4">
             <div class="flex flex-col md:flex-row justify-around items-center gap-6">
 
-                <!-- Nozzle Cycle -->
                 <div class="flex flex-col items-center">
                     <h2 class="text-lg font-bold text-gray-300 mb-2">Nozzle Cycle</h2>
                     <button id="nozzle-cycle-button" class="control-button nozzle-cycle bg-purple-500 text-white hover:bg-purple-600 px-6 py-3 text-lg rounded-lg">
@@ -131,7 +127,6 @@
                     </button>
                 </div>
 
-                <!-- Car Wash Tool -->
                 <div class="flex flex-col items-center">
                     <h2 class="text-lg font-bold text-gray-300 mb-2">Car Wash Tool</h2>
                     <div class="flex items-center gap-3">
@@ -146,7 +141,6 @@
             </div>
         </div>
 
-        <!-- STATUS MESSAGE -->
         <div class="status-panel">
             <div id="status-message-box" class="bg-gray-800 p-3 rounded-lg text-center shadow-inner">
                 <p id="statusMessage" class="text-sm text-yellow-400 font-medium">Loading...</p>
@@ -156,24 +150,9 @@
 
     <script type="module">
         // --- Firebase Setup (Minimal Boilerplate) ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        if (firebaseConfig) {
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-            if (initialAuthToken) {
-                signInWithCustomToken(auth, initialAuthToken).catch(console.error);
-            } else {
-                signInAnonymously(auth).catch(console.error);
-            }
-            getFirestore(app);
-        }
+        // Removed Firebase imports and initialization to ensure compatibility
+        // with environments like htmlpreview.github.io where global variables
+        // for configuration are not defined.
         // --- End Firebase Setup ---
 
         // Canvas + contexts
