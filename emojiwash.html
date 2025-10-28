@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Power Wash Master: Refactored Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        #progressBarContainer {
+            width: 100%;
+            background-color: #2d3748;
+            padding: 10px 20px;
+            border-radius: 12px 12px 0 0;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            border: 4px solid #4a5568;
+            border-bottom: none;
+        }
+
+        #canvas-wrapper {
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            width: 100%;
+            background-color: #374151;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            border: 4px solid #4a5568;
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        /* Optional gentle glow animation for the reset button when ready */
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 0px rgba(255,255,255,0); transform: scale(1); }
+            50% { box-shadow: 0 0 20px rgba(255,255,255,0.18); transform: scale(1.03); }
+        }
+        .glow {
+            animation: pulseGlow 2s infinite;
+        }
+
+        .tool-controls-panel {
+            background-color: #2d3748;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-panel {
+            background-color: #2d3748;
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .control-button {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="game-container">
+        <h2 class="text-3xl font-extrabold text-white text-center mb-4">
+            Emojiwash: Swipe to clean!
+        </h2>
+
+        <!-- Progress + Reset (reset placed top-leftht of header) -->
+        <div id="progressBarContainer">
+            <div class="flex items-center justify-between gap-3 mb-2">
+                                
+                <h2 class="text-sm font-bold text-gray-200 truncate" id="stageTitle">
+                    Current Stage: Pre-Soak
+                </h2>
+
+            </div>
+
+            <div class="progress-bar-container">
+                <div id="progressBar" class="progress-bar bg-yellow-500" style="width: 0%;">0%</div>
+            </div>
+        </div>
+
+        <div id="canvas-wrapper">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+<button id="reset-button"
+                        class="flex items-center justify-center text-white rounded-full shadow-xl transition-all duration-300
+                               bg-red-500 hover:bg-red-600 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16"
+                        title="Reset / Next">
+                    <!-- Content set by JS -->
+                </button>
+        <!-- TOOL CONTROLS -->
+        <div class="tool-controls-panel mt-4">
+            <div class="flex flex-col md:flex-row justify-around items-center gap-6">
+
+                <!-- Nozzle Cycle -->
+                <div class="flex flex-col items-center">
+                    <h2 class="text-lg font-bold text-gray-300 mb-2">Nozzle Cycle</h2>
+                    <button id="nozzle-cycle-button" class="control-button nozzle-cycle bg-purple-500 text-white hover:bg-purple-600 px-6 py-3 text-lg rounded-lg">
+                        <span class="text-xl mr-2" id="nozzle-icon">🎯</span>
+                        <span id="nozzle-name">Wide</span>
+                    </button>
+                </div>
+
+                <!-- Car Wash Tool -->
+                <div class="flex flex-col items-center">
+                    <h2 class="text-lg font-bold text-gray-300 mb-2">Car Wash Tool</h2>
+                    <div class="flex items-center gap-3">
+                        <button id="knob-previous" class="knob-arrow control-button bg-gray-700 text-white text-xl p-2 rounded-full h-12 w-12 flex items-center justify-center">
+                            &lt;
+                        </button>
+                        <div id="knob-display" class="knob-display bg-gray-800 text-xl font-bold text-green-400 py-3 px-6 rounded-lg min-w-[140px] text-center">
+                            PRE-SOAK
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STATUS MESSAGE -->
+        <div class="status-panel">
+            <div id="status-message-box" class="bg-gray-800 p-3 rounded-lg text-center shadow-inner">
+                <p id="statusMessage" class="text-sm text-yellow-400 font-medium">Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- Firebase Setup (Minimal Boilerplate) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken).catch(console.error);
+            } else {
+                signInAnonymously(auth).catch(console.error);
+            }
+            getFirestore(app);
+        }
+        // --- End Firebase Setup ---
+
+        // Canvas + contexts
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const progressBar = document.getElementById('progressBar');
+        const statusMessage = document.getElementById('statusMessage');
+        const stageTitle = document.getElementById('stageTitle');
+        const knobDisplay = document.getElementById('knob-display');
+        const knobPrevious = document.getElementById('knob-previous');
+        const nozzleName = document.getElementById('nozzle-name');
+        const nozzleIcon = document.getElementById('nozzle-icon');
+        const nozzleCycleButton = document.getElementById('nozzle-cycle-button');
+        const resetButton = document.getElementById('reset-button');
+
+        // Auxiliary Canvases (Layers)
+        const [baseEmojiCanvas, dirtCanvas, foamCanvas] = [document.createElement('canvas'), document.createElement('canvas'), document.createElement('canvas')];
+        const [baseEmojiCtx, dirtCtx, foamCtx] = [baseEmojiCanvas.getContext('2d'), dirtCanvas.getContext('2d'), foamCanvas.getContext('2d')];
+
+        // --- Configuration and State ---
+        const CARS = ['🚗', '🚙', '🚕', '🚌', '🏎️', '🚓', '🚚', '🚜', '🛵'];
+        const SPARKLE_EMOJIS = ['✨', '⭐', '🌟'];
+        const ADVANCEMENT_THRESHOLD = 89;
+        const INITIAL_WAX_ALPHA_TARGET = 50000;
+        const CAR_ANIMATION_DURATION = 800;
+
+        const CONFIG = {
+            NOZZLE_ORDER: ['wide', 'pinpoint', 'fan'],
+            STAGE_ORDER: ['dirty', 'foaming', 'sudded', 'waxing', 'complete'],
+            nozzles: {
+                wide: { radius: 10, shape: 'circle', multiplier: 1.0, icon: '🎯' },
+                pinpoint: { radius: 5, shape: 'circle', multiplier: 2.0, icon: '📌' },
+                fan: { radius: 12, shape: 'ellipse', multiplier: 1.5, widthRatio: 3.0, icon: '📐' }
+            },
+            tools: {
+                'pre-soak': { color: 'rgba(173, 216, 230, 0.7)', speed: 1.2, name: 'Pre-Soak', cleanColor: 'rgba(173, 216, 230, 1)' },
+                suds: { color: 'rgba(200, 200, 255, 0.9)', speed: 1.0, name: 'Suds', cleanColor: 'rgba(200, 200, 255, 1)' },
+                rinse: { color: 'rgba(200, 200, 255, 0.8)', speed: 1.5, name: 'Rinse', cleanColor: 'rgba(200, 200, 255, 1)' },
+                wax: { color: 'rgba(255, 223, 0, 0.6)', speed: 0.5, name: 'Wax', cleanColor: 'rgba(255, 223, 0, 1)' }
+            },
+            stages: {
+                dirty: { title: 'Stage 1: Pre-Soak (Dirt Removal)', tool: 'pre-soak', barColor: 'bg-yellow-500', message: `Use the **Pre-Soak** tool to remove thick mud and grime. (Advancement possible at ${ADVANCEMENT_THRESHOLD}%).` },
+                foaming: { title: 'Stage 2: Suds Application', tool: 'suds', barColor: 'bg-indigo-500', message: `Apply the **Suds** tool to cover the car completely with foam (apply until ${ADVANCEMENT_THRESHOLD}%).` },
+                sudded: { title: 'Stage 3: Rinsing (Foam Removal)', tool: 'rinse', barColor: 'bg-blue-500', message: `Use the **Rinse** tool to completely wash off all the suds (until ${ADVANCEMENT_THRESHOLD}% is removed).` },
+                waxing: { title: 'Stage 4: Waxing Application', tool: 'wax', barColor: 'bg-green-600', message: `Use the **Wax** tool to apply a coat of high-gloss protective wax (apply until ${ADVANCEMENT_THRESHOLD}% is covered).` },
+                complete: { title: 'Job Complete 🌟', tool: 'wax', barColor: 'bg-green-600', message: '🌟 **PERFECT SHINE!** The car is spotless! Click **NEXT CAR** to start a new job.' }
+            }
+        };
+
+        const state = {
+            isWashing: false,
+            animationFrameId: null,
+            sprayParticles: [],
+            bubbles: [],
+            sparkles: [],
+            previousCarEmoji: null,
+            totalInitialMudAlpha: 0,
+            savedFoamImageData: null,
+            dynamicWaxAlphaTarget: INITIAL_WAX_ALPHA_TARGET,
+
+            currentTool: 'pre-soak',
+            currentStage: 'dirty',
+            currentNozzle: 'wide',
+            cleaningPercentage: 0,
+            targetEmoji: '🚗',
+            dirtMultiplier: 1.0,
+
+            carAnimationActive: false,
+            carAnimationTimestamp: 0,
+            carAnimationStartOffset: 0,
+            carAnimationEndOffset: 0,
+            carXOffset: 0,
+            isFirstLoad: true,
+            lastX: 0,
+            lastY: 0,
+
+            // NEW: base shape alpha sum for normalization and foam target
+            baseShapeAlpha: 1
+        };
+
+        // --- Core Utilities ---
+
+        function calculateAlpha(sourceCtx) {
+            let alphaSum = 0;
+            if (sourceCtx.canvas.width === 0 || sourceCtx.canvas.height === 0) return 0;
+            try {
+                const imageData = sourceCtx.getImageData(0, 0, sourceCtx.canvas.width, sourceCtx.canvas.height);
+                const baseEmojiData = baseEmojiCtx.getImageData(0, 0, baseEmojiCtx.canvas.width, baseEmojiCtx.canvas.height);
+
+                for (let i = 3; i < imageData.data.length; i += 4) {
+                    // Only count alpha within the car's shape
+                    if (baseEmojiData.data[i] > 0) {
+                        alphaSum += imageData.data[i];
+                    }
+                }
+            } catch (e) {
+                console.error("Error calculating alpha:", e);
+                return 0;
+            }
+            return alphaSum;
+        }
+
+        function calculateBaseShapeAlpha() {
+            // Sum alpha bytes of base emoji canvas where alpha > 0
+            let sum = 0;
+            try {
+                const base = baseEmojiCtx.getImageData(0, 0, baseEmojiCtx.canvas.width, baseEmojiCtx.canvas.height);
+                for (let i = 3; i < base.data.length; i += 4) {
+                    if (base.data[i] > 0) sum += base.data[i];
+                }
+            } catch (e) {
+                console.error('base shape alpha calc error', e);
+                sum = 1;
+            }
+            return Math.max(1, sum);
+        }
+
+        function performCanvasAction(targetCtx, x, y, radius, operation, fillStyle = null) {
+            targetCtx.save();
+            // Ensure strong removal when destination-out is used.
+            if (operation === 'destination-out') {
+                targetCtx.globalCompositeOperation = 'destination-out';
+                targetCtx.globalAlpha = 1.0;
+            } else {
+                targetCtx.globalCompositeOperation = operation;
+            }
+            if (fillStyle) targetCtx.fillStyle = fillStyle;
+
+            const nozzle = CONFIG.nozzles[state.currentNozzle];
+            targetCtx.beginPath();
+            if (nozzle.shape === 'ellipse') {
+                targetCtx.ellipse(x, y, radius * nozzle.widthRatio, radius / nozzle.widthRatio, 0, 0, Math.PI * 2);
+            } else {
+                targetCtx.arc(x, y, radius, 0, Math.PI * 2);
+            }
+            targetCtx.fill();
+            // restore default alpha
+            targetCtx.globalAlpha = 1.0;
+            targetCtx.restore();
+        }
+
+        function createSprayParticle(x, y, tool) {
+            if (state.sprayParticles.length >= 150) return;
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 2 + Math.random() * 3;
+            const color = (tool === 'pre-soak' || tool === 'rinse')
+                ? 'rgba(173, 216, 230, 0.9)'
+                : 'rgba(200, 200, 255, 0.9)';
+
+            state.sprayParticles.push({
+                x: x + state.carXOffset, y: y,
+                vx: Math.cos(angle) * speed * (Math.random() * 0.5 + 0.5),
+                vy: Math.sin(angle) * speed * (Math.random() * 0.5 + 0.5),
+                size: 1 + Math.random() * 2, lifespan: 15, age: 0, color: color
+            });
+        }
+
+        function createBubble(x, y) {
+            if (state.bubbles.length >= 50) return;
+            state.bubbles.push({
+                x: x + state.carXOffset + (Math.random() - 0.5) * 50,
+                y: y + (Math.random() * 20),
+                size: 5 + Math.random() * 10, opacity: 1,
+                lifespan: 150 + Math.random() * 50, age: 0
+            });
+        }
+
+        // --- Drawing and Setup ---
+
+        function drawBaseEmoji() {
+            baseEmojiCtx.clearRect(0, 0, baseEmojiCanvas.width, baseEmojiCanvas.height);
+            const emojiSize = Math.min(canvas.width, canvas.height) * 0.7;
+            baseEmojiCtx.font = `${emojiSize}px sans-serif`;
+            baseEmojiCtx.textAlign = 'center';
+            baseEmojiCtx.textBaseline = 'middle';
+            baseEmojiCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+            baseEmojiCtx.fillText(state.targetEmoji, canvas.width / 2, canvas.height / 2);
+            // update base shape alpha
+            state.baseShapeAlpha = calculateBaseShapeAlpha();
+        }
+
+        function drawInitialDirtPattern() {
+            dirtCtx.clearRect(0, 0, dirtCanvas.width, dirtCanvas.height);
+            foamCtx.clearRect(0, 0, foamCanvas.width, foamCanvas.height);
+            state.savedFoamImageData = null;
+            state.sparkles = [];
+
+            const emojiSize = Math.min(canvas.width, canvas.height) * 0.7;
+            const difficultyScale = state.dirtMultiplier;
+
+            // 1. Thick Mud
+            dirtCtx.fillStyle = 'rgba(92, 64, 51, 1)';
+            const thickBlobCount = 100 * difficultyScale;
+            const maxBlobRadius = emojiSize * 0.08;
+            for (let i = 0; i < thickBlobCount; i++) {
+                dirtCtx.beginPath();
+                dirtCtx.arc(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * maxBlobRadius, 0, Math.PI * 2);
+                dirtCtx.globalAlpha = 0.5 + Math.random() * 0.5;
+                dirtCtx.fill();
+            }
+
+            // 2. Fine Grime
+            dirtCtx.fillStyle = 'rgba(100, 80, 70, 0.4)';
+            const fineSpeckleCount = 300 * difficultyScale;
+            const maxSpeckleRadius = emojiSize * 0.02;
+            for (let i = 0; i < fineSpeckleCount; i++) {
+                dirtCtx.beginPath();
+                dirtCtx.arc(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * maxSpeckleRadius, 0, Math.PI * 2);
+                dirtCtx.globalAlpha = 0.1 + Math.random() * 0.3;
+                dirtCtx.fill();
+            }
+
+            // Mask both dirt layers to the shape of the car
+            dirtCtx.globalCompositeOperation = 'destination-in';
+            dirtCtx.drawImage(baseEmojiCanvas, 0, 0);
+            dirtCtx.globalCompositeOperation = 'source-over';
+            dirtCtx.globalAlpha = 1;
+
+            // Compute initial dirt alpha (defensive: ensure > 0)
+            state.totalInitialMudAlpha = calculateAlpha(dirtCtx) || 1;
+        }
+
+        function setupCarContent() {
+            let newEmoji;
+            do {
+                newEmoji = CARS[Math.floor(Math.random() * CARS.length)];
+            } while (newEmoji === state.previousCarEmoji && CARS.length > 1);
+
+            state.targetEmoji = newEmoji;
+            state.previousCarEmoji = newEmoji;
+
+            drawBaseEmoji();
+            drawInitialDirtPattern();
+
+            state.dynamicWaxAlphaTarget = INITIAL_WAX_ALPHA_TARGET * state.dirtMultiplier;
+
+            state.sprayParticles = [];
+            state.bubbles = [];
+
+            state.currentStage = 'dirty';
+            state.currentTool = CONFIG.stages.dirty.tool;
+            state.cleaningPercentage = 0;
+            state.currentNozzle = 'wide';
+        }
+
+        function drawGameFrame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (canvas.width <= 0 || canvas.height <= 0) return;
+
+            ctx.save();
+            ctx.translate(state.carXOffset, 0);
+
+            // 1. Draw Base
+            ctx.drawImage(baseEmojiCanvas, 0, 0);
+
+            // 2. Draw Dirt
+            ctx.drawImage(dirtCanvas, 0, 0);
+
+            // 3. Draw Foam/Wax
+            ctx.drawImage(foamCanvas, 0, 0);
+
+            // 4. Draw Shine/Shadow (only when complete)
+            if (state.currentStage === 'complete') {
+                ctx.save();
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.filter = 'drop-shadow(0px 0px 3px rgba(255, 255, 200, 0.5))';
+                ctx.globalAlpha = 0.5;
+                ctx.drawImage(baseEmojiCanvas, 0, 0);
+                ctx.restore();
+            }
+
+            ctx.restore();
+
+            // 5. Draw Animated Particles (absolute coordinates)
+            updateAndDrawParticles();
+
+            // 6. Draw Sparkles
+            updateAndDrawSparkles();
+        }
+
+        // --- Cleaning Logic ---
+
+        function applySprayEffect(x, y, radius, color) {
+            ctx.save();
+            ctx.globalAlpha = 0.2;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x + state.carXOffset, y, radius * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function cleanArea(x, y) {
+            const nozzle = CONFIG.nozzles[state.currentNozzle];
+            const tool = CONFIG.tools[state.currentTool];
+            const requiredTool = CONFIG.stages[state.currentStage].tool;
+            if (state.currentTool !== requiredTool) return;
+
+            // radius influenced by nozzle and tool speed
+            const radius = nozzle.radius * tool.speed * nozzle.multiplier * 1.0;
+            const sprayColor = tool.cleanColor;
+
+            if (state.currentStage !== 'waxing' && state.currentStage !== 'complete') {
+                for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) {
+                    createSprayParticle(x, y, requiredTool);
+                }
+            }
+
+            switch (state.currentStage) {
+                case 'dirty':
+                    // Pre-Soak: Removes dirt — stronger removal to allow full clearing
+                    applySprayEffect(x, y, radius, sprayColor);
+                    // Do a couple of overlapping destination-out passes so thin residue can be cleared
+                    performCanvasAction(dirtCtx, x, y, radius * 0.9, 'destination-out');
+                    performCanvasAction(dirtCtx, x + (Math.random() - 0.5) * 6, y + (Math.random() - 0.5) * 6, radius * 0.7, 'destination-out');
+                    break;
+
+                case 'foaming':
+                    // Suds: Applies foam (low opacity for slower progress)
+                    applySprayEffect(x, y, radius, sprayColor);
+                    performCanvasAction(foamCtx, x, y, radius * 1.0, 'source-over', 'rgba(200, 200, 255, 0.04)');
+
+                    // Re-mask foam
+                    foamCtx.save();
+                    foamCtx.globalCompositeOperation = 'destination-in';
+                    foamCtx.drawImage(baseEmojiCanvas, 0, 0);
+                    foamCtx.restore();
+
+                    // Generate bubbles and also remove some dirt
+                    if (Math.random() < 0.25) createBubble(x, y);
+                    performCanvasAction(dirtCtx, x, y, radius * 0.6, 'destination-out');
+                    break;
+
+                case 'sudded':
+                    // Rinse: Removes foam
+                    performCanvasAction(foamCtx, x, y, radius * 1.2, 'destination-out');
+                    break;
+
+                case 'waxing':
+                    // Wax: Applies wax
+                    performCanvasAction(foamCtx, x, y, radius * 1.0, 'source-over', 'rgba(255, 223, 0, 0.05)');
+
+                    // Re-mask wax
+                    foamCtx.save();
+                    foamCtx.globalCompositeOperation = 'destination-in';
+                    foamCtx.drawImage(baseEmojiCanvas, 0, 0);
+                    foamCtx.restore();
+                    break;
+            }
+
+            drawGameFrame();
+        }
+
+        function updateCleaningProgress() {
+            let currentAlpha = 0;
+            let percentage = 0;
+            const currentStage = state.currentStage;
+
+            if (currentStage === 'dirty') {
+                currentAlpha = calculateAlpha(dirtCtx);
+                // Defensive: ensure denominator not zero
+                const denom = state.totalInitialMudAlpha || 1;
+                const mudRemoved = Math.max(0, state.totalInitialMudAlpha - currentAlpha);
+                percentage = (mudRemoved / denom) * 100;
+
+            } else if (currentStage === 'foaming') {
+                currentAlpha = calculateAlpha(foamCtx);
+                // Use the base shape alpha to require foam to actually cover the car.
+                // This makes foaming proportional to the car size and avoids the "too easy" target.
+                const foamTarget = state.baseShapeAlpha * 0.75; // must reach ~75% coverage of base shape
+                percentage = foamTarget > 0 ? (currentAlpha / foamTarget) * 100 : 0;
+
+            } else if (currentStage === 'sudded') {
+                currentAlpha = calculateAlpha(foamCtx);
+
+                const totalFoamTargetAlpha = state.savedFoamImageData
+                    ? Array.from(state.savedFoamImageData.data).filter((_, i) => (i + 1) % 4 === 0).reduce((a, b) => a + b, 0)
+                    : 1;
+
+                if (totalFoamTargetAlpha > 0) {
+                    const foamRemoved = totalFoamTargetAlpha - currentAlpha;
+                    percentage = (foamRemoved / totalFoamTargetAlpha) * 100;
+                } else {
+                    percentage = 100;
+                }
+            } else if (currentStage === 'waxing') {
+                currentAlpha = calculateAlpha(foamCtx);
+                const denom = state.dynamicWaxAlphaTarget || 1;
+                percentage = (currentAlpha / denom) * 100;
+            } else if (currentStage === 'complete') {
+                percentage = 100;
+            }
+
+            state.cleaningPercentage = Math.min(100, Math.max(0, percentage));
+            updateUI();
+        }
+
+        // --- Stage and Car Management ---
+
+        function handleStageKnob(direction) {
+            if (state.carAnimationActive) return;
+
+            const currentStageIndex = CONFIG.STAGE_ORDER.indexOf(state.currentStage);
+            let newStageIndex = currentStageIndex + direction;
+
+            if (newStageIndex < 0 || newStageIndex >= CONFIG.STAGE_ORDER.length) return;
+
+            const newStageName = CONFIG.STAGE_ORDER[newStageIndex];
+            state.currentStage = newStageName;
+            state.currentTool = CONFIG.stages[newStageName].tool;
+            state.bubbles = [];
+
+            // Stage Transition Side Effects
+            if (direction === 1) { // Forward
+                state.cleaningPercentage = 0;
+                if (newStageName === 'sudded') {
+                    state.savedFoamImageData = foamCtx.getImageData(0, 0, foamCanvas.width, foamCanvas.height);
+                } else if (newStageName === 'waxing') {
+                    foamCtx.clearRect(0, 0, foamCanvas.width, canvas.height);
+                } else if (newStageName === 'complete') {
+                    applyFinalWaxGradient();
+                    state.cleaningPercentage = 100;
+                }
+            } else { // Backward
+                if (state.currentStage === 'waxing' && state.savedFoamImageData) {
+                    foamCtx.putImageData(state.savedFoamImageData, 0, 0);
+                } else if (state.currentStage === 'foaming') {
+                    state.savedFoamImageData = null;
+                }
+            }
+
+            updateCleaningProgress();
+            drawGameFrame();
+        }
+
+        function startNewCarSequence() {
+            if (state.carAnimationActive) return;
+            state.isWashing = false;
+            state.sprayParticles = [];
+            state.bubbles = [];
+            state.sparkles = [];
+
+            if (state.isFirstLoad) {
+                state.dirtMultiplier = 1.0;
+                setupCarContent();
+                state.carXOffset = 0;
+                state.isFirstLoad = false;
+                updateUI();
+                return;
+            }
+
+            // 1. Drive-off (Exits Left)
+            state.carAnimationActive = true;
+            state.carAnimationStartOffset = 0;
+            state.carAnimationEndOffset = -canvas.width * 1.5;
+            state.carAnimationTimestamp = 0;
+
+            const driveOffComplete = () => {
+                // 2. Setup next car with increased difficulty
+                state.dirtMultiplier = Math.max(1.0, state.dirtMultiplier * 2.0);
+                setupCarContent();
+
+                // 3. Drive-in (Enters Right)
+                state.carXOffset = canvas.width * 1.5;
+                state.carAnimationStartOffset = state.carXOffset;
+                state.carAnimationEndOffset = 0;
+                state.carAnimationTimestamp = 0;
+
+                state.carAnimationActive = true;
+                requestAnimationFrame(animateCarDrive);
+            };
+
+            // Start the drive-off animation loop
+            const driveOffLoop = (timestamp) => {
+                if (!state.carAnimationActive) return;
+                animateCarDrive(timestamp, driveOffComplete);
+            };
+            requestAnimationFrame(driveOffLoop);
+        }
+
+        function animateCarDrive(timestamp, callback = null) {
+            if (!state.carAnimationActive) return;
+
+            if (state.carAnimationTimestamp === 0) {
+                state.carAnimationTimestamp = timestamp;
+            }
+
+            const elapsed = timestamp - state.carAnimationTimestamp;
+            let progress = Math.min(1, elapsed / CAR_ANIMATION_DURATION);
+            let easedProgress = (progress < 0.5) ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+            state.carXOffset = state.carAnimationStartOffset + (state.carAnimationEndOffset - state.carAnimationStartOffset) * easedProgress;
+
+            drawGameFrame();
+
+            if (progress < 1) {
+                requestAnimationFrame((t) => animateCarDrive(t, callback));
+            } else {
+                state.carAnimationActive = false;
+                if (callback) {
+                    callback();
+                } else {
+                    state.carXOffset = 0;
+                    updateUI();
+                }
+            }
+        }
+
+        // --- UI and Event Handlers ---
+
+        function updateUI() {
+            const currentInfo = CONFIG.stages[state.currentStage];
+            const currentStageIndex = CONFIG.STAGE_ORDER.indexOf(state.currentStage);
+            const currentNozzleData = CONFIG.nozzles[state.currentNozzle];
+            const capitalizedName = state.currentNozzle.charAt(0).toUpperCase() + state.currentNozzle.slice(1);
+
+            nozzleName.textContent = capitalizedName;
+            nozzleIcon.textContent = currentNozzleData.icon;
+            knobDisplay.textContent = currentInfo.tool.toUpperCase();
+
+            knobPrevious.disabled = currentStageIndex === 0 || state.carAnimationActive;
+
+            progressBar.style.width = `${state.cleaningPercentage.toFixed(2)}%`;
+            progressBar.textContent = `${Math.floor(state.cleaningPercentage)}%`;
+
+            // update bar color via classes (remove old and add new)
+            document.querySelectorAll('.progress-bar').forEach(bar => {
+                bar.className = 'progress-bar h-full transition-all duration-300 ease-out flex items-center justify-center text-xs font-bold text-white ' + currentInfo.barColor;
+            });
+
+            stageTitle.textContent = `${currentInfo.title} (Job Multiplier: ${state.dirtMultiplier.toFixed(1)}x)`;
+
+            // Update reset button appearance and interactivity
+            if (state.currentStage === 'complete') {
+                // Next Car: Green Right Arrow (SVG to ensure direction)
+                resetButton.innerHTML = `
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M5 12h14" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M13 5l7 7-7 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>`;
+                resetButton.className = 'flex items-center justify-center text-white rounded-full shadow-xl transition-all duration-300 bg-green-500 hover:bg-green-600 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 glow';
+                resetButton.disabled = state.carAnimationActive;
+                resetButton.title = 'Next Car';
+            } else {
+                // Reset Dirt: Red Loopback Icon
+                resetButton.innerHTML = '<span class="text-2xl">&#x21BB;</span>';
+                resetButton.className = 'flex items-center justify-center text-white rounded-full shadow-xl transition-all duration-300 bg-red-500 hover:bg-red-600 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16';
+                resetButton.disabled = state.carAnimationActive;
+                resetButton.title = 'Reset / Next';
+                // remove glow just in case
+                resetButton.classList.remove('glow');
+            }
+
+            statusMessage.innerHTML = `${currentInfo.message} ${currentStageIndex < CONFIG.STAGE_ORDER.length - 1 ? ` **(Release mouse/finger to advance when ${ADVANCEMENT_THRESHOLD}% is reached)**` : ''}`;
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-wrapper');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+
+            [baseEmojiCanvas, dirtCanvas, foamCanvas].forEach(c => {
+                c.width = canvas.width;
+                c.height = canvas.height;
+            });
+
+            if (canvas.width > 0 && canvas.height > 0) {
+                drawBaseEmoji();
+                if (!state.isFirstLoad) {
+                    drawInitialDirtPattern(); // Redraw dirt to fit new size
+                    state.totalInitialMudAlpha = calculateAlpha(dirtCtx) || 1;
+                }
+                updateUI();
+            }
+        }
+
+        // --- Game Loop ---
+        function gameLoop() {
+            const canWash = !state.carAnimationActive && state.isWashing && state.currentStage !== 'complete' && state.currentTool === CONFIG.stages[state.currentStage].tool;
+
+            if (canWash) {
+                updateCleaningProgress();
+            }
+
+            drawGameFrame();
+
+            state.animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // Particle and Sparkle Animation Helpers
+
+        function updateAndDrawParticles() {
+            ctx.save();
+            state.sprayParticles = state.sprayParticles.filter(p => {
+                p.age++; p.x += p.vx; p.y += p.vy; p.vy += 0.1;
+                if (p.age > p.lifespan) return false;
+                ctx.globalAlpha = 1 - (p.age / p.lifespan);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * (1 - p.age / p.lifespan), 0, Math.PI * 2);
+                ctx.fill();
+                return true;
+            });
+
+            if (state.currentStage === 'foaming') {
+                state.bubbles = state.bubbles.filter(b => {
+                    b.age++; b.y -= 0.5; b.opacity = 1 - (b.age / b.lifespan);
+                    if (b.age > b.lifespan) return false;
+
+                    ctx.globalAlpha = b.opacity;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${b.opacity * 0.8})`; ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    const currentSize = b.size * (1 - (b.age / b.lifespan) * 0.5);
+                    ctx.arc(b.x, b.y, currentSize, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.fillStyle = `rgba(173, 216, 230, ${b.opacity * 0.1})`; ctx.fill();
+                    return true;
+                });
+            } else { state.bubbles = []; }
+            ctx.restore();
+        }
+
+        function createSparkle() {
+            if (state.sparkles.length >= 25) return;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const randX = centerX + (Math.random() - 0.5) * canvas.width * 0.6;
+            const randY = centerY + (Math.random() - 0.5) * canvas.height * 0.6;
+
+            state.sparkles.push({
+                x: randX - state.carXOffset, y: randY,
+                emoji: SPARKLE_EMOJIS[Math.floor(Math.random() * SPARKLE_EMOJIS.length)],
+                size: 16 + Math.random() * 8, opacity: 1,
+                velocity: { x: (Math.random() - 0.5) * 0.5, y: (Math.random() - 0.5) * 0.5 },
+                lifespan: 120 + Math.random() * 80, currentFrame: 0
+            });
+        }
+
+        function updateAndDrawSparkles() {
+            if (state.currentStage !== 'complete') return;
+
+            ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            state.sparkles = state.sparkles.filter(s => {
+                s.currentFrame++; s.x += s.velocity.x; s.y += s.velocity.y;
+                s.opacity = 1 - (s.currentFrame / s.lifespan);
+                if (s.opacity <= 0) return false;
+                ctx.globalAlpha = s.opacity;
+                ctx.font = `${s.size * (s.opacity * 0.5 + 0.5)}px sans-serif`;
+                ctx.fillText(s.emoji, s.x + state.carXOffset, s.y);
+                return true;
+            });
+            ctx.restore();
+
+            if (Math.random() < 0.2) createSparkle();
+        }
+
+        function applyFinalWaxGradient() {
+            foamCtx.clearRect(0, 0, foamCanvas.width, foamCanvas.height);
+            const gradient = foamCtx.createLinearGradient(0, foamCanvas.height, foamCanvas.width, 0);
+            gradient.addColorStop(0, 'rgba(255, 223, 0, 0.15)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)');
+            gradient.addColorStop(1, 'rgba(255, 223, 0, 0.15)');
+            foamCtx.fillStyle = gradient;
+            foamCtx.fillRect(0, 0, foamCanvas.width, foamCanvas.height);
+            foamCtx.globalCompositeOperation = 'destination-in';
+            foamCtx.drawImage(baseEmojiCanvas, 0, 0);
+            foamCtx.globalCompositeOperation = 'source-over';
+        }
+
+        // --- Initialization ---
+
+        function init() {
+            // Setup Control Listeners
+            nozzleCycleButton.addEventListener('click', () => {
+                const currentNozzleIndex = CONFIG.NOZZLE_ORDER.indexOf(state.currentNozzle);
+                const nextNozzleIndex = (currentNozzleIndex + 1) % CONFIG.NOZZLE_ORDER.length;
+                state.currentNozzle = CONFIG.NOZZLE_ORDER[nextNozzleIndex];
+                updateUI();
+            });
+            knobPrevious.addEventListener('click', () => handleStageKnob(-1));
+
+            // resetButton behavior: if complete -> next car; otherwise short reset (re-initialize dirt)
+            resetButton.addEventListener('click', () => {
+                if (state.currentStage === 'complete' && !state.carAnimationActive) {
+                    startNewCarSequence();
+                } else if (!state.carAnimationActive) {
+                    // quick reset of dirt and foam for current car
+                    drawInitialDirtPattern();
+                    state.cleaningPercentage = 0;
+                    updateCleaningProgress();
+                    drawGameFrame();
+                }
+            });
+
+            // Mouse and Touch events
+            const getMousePos = (event) => {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+                const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+                return {
+                    x: (clientX - rect.left) * (canvas.width / rect.width) - state.carXOffset,
+                    y: (clientY - rect.top) * (canvas.height / rect.height)
+                };
+            };
+
+            const startWashing = (event) => {
+                if (state.currentStage === 'complete' || state.carAnimationActive) return;
+                state.isWashing = true;
+                const pos = getMousePos(event);
+                state.lastX = pos.x; state.lastY = pos.y;
+                cleanArea(pos.x, pos.y);
+                if (!state.animationFrameId) gameLoop();
+            };
+
+            const stopWashing = () => {
+                if (!state.isWashing) return;
+                state.isWashing = false;
+                state.sprayParticles = [];
+
+                const currentInfo = CONFIG.stages[state.currentStage];
+                const isTargetMet = state.cleaningPercentage >= ADVANCEMENT_THRESHOLD;
+
+                if (isTargetMet && state.currentStage !== 'complete' && !state.carAnimationActive) {
+                    handleStageKnob(1);
+                }
+            };
+
+            const handleMove = (event) => {
+                if (!state.isWashing || state.carAnimationActive || state.currentStage === 'complete') return;
+                const pos = getMousePos(event);
+                state.lastX = pos.x; state.lastY = pos.y;
+                cleanArea(pos.x, pos.y);
+            };
+
+            canvas.addEventListener('mousedown', startWashing);
+            canvas.addEventListener('mouseup', stopWashing);
+            canvas.addEventListener('mouseleave', stopWashing);
+
+            canvas.addEventListener('mousemove', handleMove);
+            canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startWashing(e); }, { passive: false });
+            canvas.addEventListener('touchend', (e) => { e.preventDefault(); stopWashing(); }, { passive: false });
+            canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); }, { passive: false });
+
+            window.addEventListener('resize', resizeCanvas);
+
+            resizeCanvas();
+            startNewCarSequence();
+            gameLoop();
+        }
+
+        // Start on load
+        window.onload = init;
+    </script>
+</body>
+</html>
