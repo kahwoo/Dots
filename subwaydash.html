@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Subway Dash 3D</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Three.js CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght400;700;900&display=swap');
+        /*
+        * PURE CSS CONVERSION from Tailwind Classes
+        */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
         body {
             margin: 0;
             overflow: hidden;
@@ -41,15 +42,23 @@
             box-sizing: border-box;
             z-index: 10;
         }
-        #score, #message-box {
+
+        /* Styling for the score box */
+        #score {
             background-color: rgba(0, 0, 0, 0.6);
             padding: 0.5rem 1rem;
             border-radius: 0.5rem;
             color: #fff;
             font-weight: 700;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            /* Equivalent of self-start */
+            align-self: flex-start;
         }
+
+        /* Styling for the message box */
         #message-box {
+            /* Equivalent of rounded-xl */
+            border-radius: 1rem; 
             pointer-events: auto;
             position: absolute;
             top: 50%;
@@ -63,6 +72,8 @@
             flex-direction: column;
             align-items: center;
             max-width: 90%;
+            /* Explicit box model for a good look */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); 
         }
         #message-box h2 {
             font-size: 1.5rem;
@@ -75,6 +86,8 @@
             color: #ccc;
             margin-bottom: 1.5rem;
         }
+
+        /* Styling for the restart button */
         .restart-button {
             background-color: #10b981; /* Emerald green */
             color: white;
@@ -83,8 +96,14 @@
             font-weight: 700;
             cursor: pointer;
             transition: background-color 0.2s;
-            box-shadow: 0 4px #047857;
+            /* Box shadow for 3D press effect */
+            box-shadow: 0 4px #047857; 
             border: none;
+            /* Flex properties for alignment inside the message box */
+            align-self: center;
+        }
+        .restart-button:hover {
+            background-color: #059669; /* Darker emerald on hover */
         }
         .restart-button:active {
             box-shadow: none;
@@ -95,13 +114,11 @@
 <body>
 
     <div id="game-container">
-        <!-- Three.js Canvas will be appended here -->
-    </div>
+        </div>
 
     <div id="ui-overlay">
-        <div id="score" class="self-start">Score: 0</div>
-        <!-- Instruction box -->
-        <div id="message-box" class="rounded-xl">
+        <div id="score">Score: 0</div> 
+        <div id="message-box"> 
             <h2 id="msg-title">Subway Dash 3D</h2>
             <p id="msg-content">Swipe Up to Jump, Down to Duck, Left/Right to Change Lanes.<br>Tap or Press Space to Start.</p>
             <button class="restart-button" onclick="startGame()">Start Game</button>
