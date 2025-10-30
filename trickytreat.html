@@ -1,0 +1,147 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tricky Treat</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
+  canvas { display: block; background: #444; }
+  #score, #missed { position: absolute; top: 10px; color: #fff; font-size: 24px; }
+  #score { left: 10px; }
+  #missed { right: 10px; }
+  #zenButton {
+    position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+    padding: 10px 20px; font-size: 18px; background: #444; color: #fff;
+    border: 1px solid #666; border-radius: 10px; opacity: 0.7;
+  }
+  #zenButton:hover { opacity: 1; cursor: pointer; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<div id="score">Score: 0</div>
+<div id="missed">Missed: 0</div>
+<button id="zenButton">Zen Mode</button>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+let missed = 0;
+let gameOver = false;
+let zenMode = false;
+let pumpkin = { x: canvas.width/2 - 50, y: canvas.height - 100, size: 100, speed: 10 };
+let candies = [];
+let candySpeed = 3;
+let leftPressed = false;
+let rightPressed = false;
+
+const treats = ["🍫","🍬","🍭","🍩","🍯","🍪","🍦","🍧","🍨","🍡","🧁","🎂"];
+const pumpkinEmoji = "🎃";
+
+// Keyboard controls
+window.addEventListener('keydown', e => { 
+  if(e.key === 'ArrowLeft') leftPressed = true; 
+  if(e.key === 'ArrowRight') rightPressed = true;
+});
+window.addEventListener('keyup', e => { 
+  if(e.key === 'ArrowLeft') leftPressed = false; 
+  if(e.key === 'ArrowRight') rightPressed = false; 
+});
+
+// Touch controls
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  let touchX = e.touches[0].clientX;
+  pumpkin.x = touchX - pumpkin.size/2;
+}, { passive: false });
+
+// Zen mode button
+document.getElementById('zenButton').addEventListener('click', () => {
+  zenMode = !zenMode;
+  missed = 0;
+  document.getElementById('missed').innerText = "Missed: 0";
+  candySpeed = 3;
+  gameOver = false;
+  document.getElementById('zenButton').innerText = zenMode ? "Zen Mode ✅" : "Zen Mode";
+});
+
+function spawnCandy() {
+  let x = Math.random() * (canvas.width - 40);
+  let emoji = treats[Math.floor(Math.random() * treats.length)];
+  candies.push({ x, y: -40, emoji, size: 40 });
+}
+
+function update() {
+  if(gameOver) return;
+
+  if(leftPressed) pumpkin.x -= pumpkin.speed;
+  if(rightPressed) pumpkin.x += pumpkin.speed;
+  pumpkin.x = Math.max(0, Math.min(canvas.width - pumpkin.size, pumpkin.x));
+
+  for(let i = candies.length - 1; i >= 0; i--){
+    candies[i].y += candySpeed;
+
+    if(candies[i].y + candies[i].size > pumpkin.y &&
+       candies[i].x + candies[i].size > pumpkin.x &&
+       candies[i].x < pumpkin.x + pumpkin.size) {
+      score++;
+      document.getElementById('score').innerText = "Score: " + score;
+      candies.splice(i,1);
+      if(!zenMode) candySpeed += 0.05;
+    } else if(candies[i].y > canvas.height) {
+      candies.splice(i,1);
+      if(!zenMode){
+        missed++;
+        document.getElementById('missed').innerText = "Missed: " + missed;
+        if(missed >= 10) gameOver = true;
+      }
+    }
+  }
+
+  if(Math.random() < 0.02) spawnCandy();
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(gameOver){
+    ctx.fillStyle = "#fff";
+    ctx.font = "64px serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Game Over!", canvas.width/2, canvas.height/2 - 40);
+    ctx.font = "32px serif";
+    ctx.fillText("Score: " + score, canvas.width/2, canvas.height/2 + 20);
+    ctx.fillText("Tap Zen Mode to keep playing", canvas.width/2, canvas.height/2 + 60);
+    return;
+  }
+
+  ctx.font = pumpkin.size + "px serif";
+  ctx.textAlign = "center";
+  ctx.fillText(pumpkinEmoji, pumpkin.x + pumpkin.size/2, pumpkin.y + pumpkin.size*0.75);
+
+  candies.forEach(c => {
+    ctx.font = c.size + "px serif";
+    ctx.fillText(c.emoji, c.x + c.size/2, c.y + c.size*0.75);
+  });
+
+  if(zenMode){
+    ctx.font = "24px sans-serif";
+    ctx.fillStyle = "#fff";
+    ctx.fillText("🧘 Zen Mode", canvas.width/2, 30);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
