@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subway Dash 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght400;700;900&display=swap');
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #0d0a13; /* Dark background */
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allows clicks/touches to pass through to the canvas for controls */
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+        #score, #message-box {
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            color: #fff;
+            font-weight: 700;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        #message-box {
+            pointer-events: auto;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 1.5rem 2rem;
+            background-color: #2c253d;
+            border: 4px solid #f97316; /* Orange accent */
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            max-width: 90%;
+        }
+        #message-box h2 {
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+        #message-box p {
+            font-size: 1rem;
+            color: #ccc;
+            margin-bottom: 1.5rem;
+        }
+        .restart-button {
+            background-color: #10b981; /* Emerald green */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            box-shadow: 0 4px #047857;
+            border: none;
+        }
+        .restart-button:active {
+            box-shadow: none;
+            transform: translateY(4px);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Three.js Canvas will be appended here -->
+    </div>
+
+    <div id="ui-overlay">
+        <div id="score" class="self-start">Score: 0</div>
+        <!-- Instruction box -->
+        <div id="message-box" class="rounded-xl">
+            <h2 id="msg-title">Subway Dash 3D</h2>
+            <p id="msg-content">Swipe Up to Jump, Down to Duck, Left/Right to Change Lanes.<br>Tap or Press Space to Start.</p>
+            <button class="restart-button" onclick="startGame()">Start Game</button>
+        </div>
+    </div>
+
+    <script>
+        // Global Three.js variables
+        let scene, camera, renderer;
+        let player, road;
+        let obstacles = [];
+        let playerSpeed = 0.2;
+        let obstacleSpeed = 0.5;
+        let score = 0;
+        let gameOver = false;
+        let isJumping = false;
+        let isDucking = false;
+        let onTrain = false; 
+        
+        // --- STATE VARIABLES ---
+        let isTrainSequenceActive = false; 
+        
+        // Timer for frame-based train sequence duration
+        let trainSequenceTimer = 0;
+        // The total duration of the current sequence (dynamically set on ramp hit or clip-in)
+        let currentSequenceDuration = 0; 
+        
+        // --- OBSTACLE SPAWNING VARIABLES (Fix for overlaps) ---
+        let obstacleSpawnTimer = 0;
+        let nextSpawnDelay = 150; // Initial delay
+        const MIN_SPAWN_INTERVAL = 150; // Minimum frame delay to ensure gap
+
+        let cameraOffset = 0; // Camera offset for tracking player on train
+
+        const LANE_WIDTH = 4;
+        const LANES = [-LANE_WIDTH, 0, LANE_WIDTH];
+        let currentLane = 1; // Start in the middle lane (index 1)
+
+        // Game State Constants
+        const JUMP_DURATION_FRAMES = 30;
+        let jumpTimer = 0;
+        const BASE_OBSTACLE_SPEED = 0.5;
+        const PLAYER_HEIGHT = 1.5; // Player mesh height
+        const PLAYER_RADIUS = 0.5; // Player mesh radius
+        
+        // Train dimensions
+        const TRAIN_HEIGHT_CENTER_Y = 2.5; // Center of the 5.0m high train mesh
+        const TRAIN_MESH_HEIGHT = TRAIN_HEIGHT_CENTER_Y * 2; // Total train height is 5.0
+        const TRAIN_CAR_DEPTH = 20; // Each train car is 20m long
+        const RAMP_DEPTH = 15; // Ramp is 15m long
+        
+        const PLAYER_GROUND_Y = PLAYER_HEIGHT / 2; // Player's Y position when standing on the ground (0.75)
+        
+        // The Y position of the player's center when standing on the train roof (5.0 + 0.75 + buffer)
+        const TRAIN_TOP_Y = TRAIN_MESH_HEIGHT + PLAYER_GROUND_Y + 0.01; 
+        // The actual height of the train roof surface (5.0)
+        const TRAIN_ROOF_Y = TRAIN_MESH_HEIGHT; 
+        
+        // How fast the player springs onto the train roof 
+        const TRAIN_SPRING_FACTOR = 0.3; 
+        
+        // Increased fall speed for immediate gravity after jump/ramp
+        const FALL_SPEED = 1.0; 
+        
+        const JUMP_LERP_FACTOR = 0.3; // Factor for smoothing the normal jump
+
+        // Initial camera Y position when standing on the ground
+        const CAMERA_INITIAL_Y = 3; 
+        // How much the camera needs to lift to center on the player on the train
+        const CAMERA_OFFSET_Y = TRAIN_TOP_Y - CAMERA_INITIAL_Y; 
+
+        // --- Global Materials ---
+        const PLAYER_MATERIAL = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red
+
+        const container = document.getElementById('game-container');
+        const scoreElement = document.getElementById('score');
+        const msgBox = document.getElementById('message-box');
+        const msgTitle = document.getElementById('msg-title');
+        const msgContent = document.getElementById('msg-content');
+        const restartButton = document.querySelector('.restart-button');
+
+        // --- Utility Functions ---
+
+        /**
+         * Sets up the main Three.js scene, camera, and renderer.
+         */
+        function initThree() {
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb); // Light blue sky
+
+            // 2. Camera Setup
+            const aspect = container.clientWidth / container.clientHeight;
+            camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+            camera.position.set(0, CAMERA_INITIAL_Y, -5);
+            camera.lookAt(0, 0, 10); 
+
+            // 3. Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // 4. Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 5);
+            directionalLight.position.set(5, 10, 5);
+            scene.add(directionalLight);
+
+            // 5. Initial Game Objects
+            createRoad();
+            createPlayer();
+        }
+
+        /**
+         * Creates the infinite running track with 3 lanes.
+         */
+        function createRoad() {
+            // Ground (Road/Tracks)
+            const roadGeometry = new THREE.PlaneGeometry(LANE_WIDTH * 3 + 0.5, 1000);
+            const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x47494f }); // Dark gray asphalt
+            road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.rotation.x = -Math.PI / 2; // Rotate to lie flat
+            road.position.y = 0;
+            road.position.z = 490;
+            scene.add(road);
+
+            // Lane markers (simple lines)
+            for (let i = 0; i < 2; i++) {
+                const markerGeometry = new THREE.BoxGeometry(0.1, 0.01, 1000);
+                const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+                marker.position.set(LANES[i] + LANE_WIDTH / 2, 0.01, 490);
+                scene.add(marker);
+            }
+
+            // Side Walls/Scenery
+            const wallGeometry = new THREE.PlaneGeometry(1000, 20);
+            const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x6e6e6e });
+
+            const wallLeft = new THREE.Mesh(wallGeometry, wallMaterial);
+            wallLeft.rotation.y = Math.PI / 2;
+            wallLeft.position.set(-LANE_WIDTH * 1.5 - 2, 10, 490);
+            scene.add(wallLeft);
+
+            const wallRight = new THREE.Mesh(wallGeometry, wallMaterial);
+            wallRight.rotation.y = -Math.PI / 2;
+            wallRight.position.set(LANE_WIDTH * 1.5 + 2, 10, 490);
+            scene.add(wallRight);
+        }
+
+        /**
+         * Creates the player character.
+         */
+        function createPlayer() {
+            // Player geometry (simple red cylinder for visibility)
+            const playerGeometry = new THREE.CylinderGeometry(PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_HEIGHT, 16);
+            player = new THREE.Mesh(playerGeometry, PLAYER_MATERIAL);
+
+            // Set initial position (middle lane, slightly up)
+            player.position.set(LANES[currentLane], PLAYER_GROUND_Y, 0);
+            scene.add(player);
+        }
+
+        /**
+         * Creates a new obstacle (train, barrier, or ramp).
+         */
+        function createObstacle(lane, type, zPosition, depth, height) {
+            let geometry, material;
+
+            if (type === 'train') {
+                geometry = new THREE.BoxGeometry(LANE_WIDTH, TRAIN_MESH_HEIGHT, depth); 
+                material = new THREE.MeshBasicMaterial({ color: 0x4a90e2 }); // Blue train
+            } else if (type === 'barrier') {
+                geometry = new THREE.BoxGeometry(LANE_WIDTH, height * 2, depth);
+                material = new THREE.MeshBasicMaterial({ color: 0xf97316 }); // Orange barrier
+            } else if (type === 'ramp') {
+                geometry = new THREE.BoxGeometry(LANE_WIDTH, height * 2, depth); // Height 1.0
+                material = new THREE.MeshBasicMaterial({ color: 0x888888 }); // Gray ramp
+            }
+
+            const obstacleMesh = new THREE.Mesh(geometry, material);
+            obstacleMesh.position.set(LANES[lane], height, zPosition);
+            obstacleMesh.name = type;
+            obstacleMesh.userData = { lane: lane, depth: depth, height: height, type: type, SEQUENCE_DURATION: 0 };
+            
+            // Add increased rotation to visually suggest a steeper slope (only for ramps)
+            if (type === 'ramp') {
+                obstacleMesh.rotation.x = -Math.PI / 10; // Steeper angle
+            }
+
+            obstacles.push(obstacleMesh);
+            scene.add(obstacleMesh);
+            return obstacleMesh; 
+        }
+
+        /**
+         * Manages obstacle spawning and movement.
+         */
+        function updateObstacles() {
+            // Calculate speed increase based on score
+            obstacleSpeed = BASE_OBSTACLE_SPEED + Math.floor(score / 500) * 0.05;
+
+            // Move existing obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obstacle = obstacles[i];
+                obstacle.position.z -= obstacleSpeed; 
+
+                // Remove if past the camera
+                if (obstacle.position.z < camera.position.z - 5) {
+                    scene.remove(obstacle);
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Spawn new obstacles
+            obstacleSpawnTimer++;
+            // Use the calculated nextSpawnDelay instead of a fixed interval
+            if (obstacleSpawnTimer > nextSpawnDelay) {
+                const lane = Math.floor(Math.random() * 3);
+                
+                // 30% chance of a train sequence, 70% chance of a barrier
+                const isTrainSpawn = Math.random() < 0.3; 
+                const spawnZ = 150; 
+                let totalSequenceLength = 0;
+
+                if (isTrainSpawn) {
+                    // Randomly decide the number of cars (1 to 5)
+                    const numCars = Math.floor(Math.random() * 5) + 1;
+                    const totalCarLength = numCars * TRAIN_CAR_DEPTH;
+                    
+                    // 85% chance of ramp, 15% chance of lethal train
+                    const needsRamp = Math.random() > 0.15; 
+
+                    // Calculate total length for spawn timing
+                    totalSequenceLength = totalCarLength;
+                    if (needsRamp) {
+                        totalSequenceLength += RAMP_DEPTH;
+                    }
+                    
+                    // Calculate the necessary duration (Length / Speed + Buffer)
+                    const sequenceDurationFrames = Math.ceil(totalSequenceLength / BASE_OBSTACLE_SPEED) + 10; 
+
+                    // The center of the entire train car block
+                    const trainBlockCenterZ = spawnZ; 
+                    
+                    // The point where the ramp/player enters the first car
+                    const firstCarFrontZ = trainBlockCenterZ - (totalCarLength / 2); 
+                    
+                    let carSpawnZ = firstCarFrontZ + TRAIN_CAR_DEPTH / 2; // Center Z of the first car
+
+                    if (needsRamp) {
+                        // 1. Ramp Calculation and Spawn
+                        const rampZPosition = firstCarFrontZ - RAMP_DEPTH / 2; 
+                        
+                        const ramp = createObstacle(lane, 'ramp', rampZPosition, RAMP_DEPTH, 0.5);
+                        ramp.userData.SEQUENCE_DURATION = sequenceDurationFrames; // Pass correct duration
+                    } 
+
+                    // 2. Train Car Spawning
+                    for(let i = 0; i < numCars; i++) {
+                        const train = createObstacle(
+                            lane, 
+                            'train', 
+                            carSpawnZ, 
+                            TRAIN_CAR_DEPTH, 
+                            TRAIN_HEIGHT_CENTER_Y
+                        );
+                        // Mark cars in a ramp sequence (non-lethal to hit the top of)
+                        train.userData.isRampSequence = needsRamp; 
+                        carSpawnZ += TRAIN_CAR_DEPTH; // Move Z back for the next car
+                    }
+
+                } else {
+                    // Spawn a regular barrier
+                    const barrierDepth = 1;
+                    createObstacle(lane, 'barrier', spawnZ, barrierDepth, 0.75);
+                    totalSequenceLength = barrierDepth;
+                }
+                
+                // CRITICAL FIX: Set the delay for the NEXT spawn based on the current sequence length.
+                // This prevents overlaps and ensures a minimum gap (MIN_SPAWN_INTERVAL) 
+                nextSpawnDelay = Math.max(
+                    Math.ceil(totalSequenceLength / BASE_OBSTACLE_SPEED) + 30, 
+                    MIN_SPAWN_INTERVAL
+                ); 
+
+                obstacleSpawnTimer = 0; // Reset timer
+            }
+        }
+
+        /**
+         * Handles player movement and collision detection.
+         */
+        function updatePlayer() {
+            // Smooth lane change (move player toward target X position)
+            const targetX = LANES[currentLane];
+            const currentX = player.position.x;
+            player.position.x += (targetX - currentX) * 0.1;
+
+            // --- 1. Determine Current Floor (Base Y) ---
+            let currentFloorY = PLAYER_GROUND_Y;
+            onTrain = false; 
+            cameraOffset = 0; 
+
+            // --- 2. Ramp Activation Check ---
+            // If sequence is NOT active, check for ramp collision to start it.
+            if (!isTrainSequenceActive) {
+                 // Recalculate Player Bounding Box for collision checks
+                const playerCurrentHeight = player.scale.y * PLAYER_HEIGHT; 
+                const playerBox = new THREE.Box3().set(
+                    new THREE.Vector3(player.position.x - PLAYER_RADIUS, player.position.y - playerCurrentHeight / 2, player.position.z - PLAYER_RADIUS),
+                    new THREE.Vector3(player.position.x + PLAYER_RADIUS, player.position.y + playerCurrentHeight / 2, player.position.z + PLAYER_RADIUS)
+                );
+
+                const nearObstacles = obstacles.filter(o => o.userData.lane === currentLane);
+                const activeRamp = nearObstacles.find(o => o.userData.type === 'ramp');
+                
+                if (activeRamp) {
+                    const rampBox = new THREE.Box3().setFromObject(activeRamp);
+
+                    // Check for intersection AND ensure player is near the ground to prevent jumping over it
+                    if (playerBox.intersectsBox(rampBox) && player.position.y <= PLAYER_GROUND_Y + 0.1) { 
+                        // ACTIVATE SEQUENCE
+                        isTrainSequenceActive = true;
+                        trainSequenceTimer = 0; 
+                        // Set the dynamic duration based on the ramp's user data
+                        currentSequenceDuration = activeRamp.userData.SEQUENCE_DURATION; 
+                        
+                        // Snap player Y immediately to the train roof height on activation
+                        player.position.y = TRAIN_TOP_Y; 
+                    }
+                }
+            }
+
+
+            // --- 3. TRAIN SEQUENCE LOGIC (Frame-based timer) ---
+            if (isTrainSequenceActive) {
+                // A. Timer and Deactivation
+                trainSequenceTimer++;
+
+                if (trainSequenceTimer >= currentSequenceDuration) {
+                    isTrainSequenceActive = false;
+                    trainSequenceTimer = 0; 
+                    currentSequenceDuration = 0;
+                }
+
+                // B. Set Floor and Camera (Only if still active)
+                if (isTrainSequenceActive) {
+                    currentFloorY = TRAIN_TOP_Y;
+                    onTrain = true;
+                    isDucking = false; 
+                    player.scale.y = 1; // Enforce standing
+                    cameraOffset = CAMERA_OFFSET_Y;
+                }
+            } 
+            // C. Normal Duck/Ground Logic (Only runs if NOT active on train sequence)
+            else if (isDucking) {
+                currentFloorY = (PLAYER_HEIGHT * 0.5 / 2); 
+                player.scale.y = 0.5;
+            } else {
+                currentFloorY = PLAYER_GROUND_Y;
+                player.scale.y = 1;
+            }
+            
+            // --- 4. JUMP / GRAVITY LOGIC (Unified - runs every frame) ---
+            
+            if (isJumping && jumpTimer > 0) {
+                // Jumping: Use parabola based on the current floor (ground or train roof)
+                let jumpHeight = currentFloorY + 5 * Math.sin(Math.PI * (1 - jumpTimer / JUMP_DURATION_FRAMES));
+                
+                // Use a different interpolation speed for train vs. ground jumps
+                const lerpFactor = onTrain ? TRAIN_SPRING_FACTOR : JUMP_LERP_FACTOR;
+
+                player.position.y += (jumpHeight - player.position.y) * lerpFactor;
+                
+                jumpTimer--;
+            } 
+            // Aggressive Gravity Check: If above the floor, pull down.
+            else if (player.position.y > currentFloorY + 0.1) {
+                player.position.y -= FALL_SPEED; 
+
+                if (player.position.y <= currentFloorY) {
+                    player.position.y = currentFloorY; // Snap to floor
+                    isJumping = false; 
+                    jumpTimer = 0;
+                }
+            }
+            // Snap to floor (if jump finished or near floor)
+            else if (Math.abs(player.position.y - currentFloorY) < 0.1) {
+                player.position.y = currentFloorY;
+                isJumping = false;
+                jumpTimer = 0;
+            }
+
+
+            // --- 5. Collision Detection (Final Check) ---
+            const finalPlayerCurrentHeight = player.scale.y * PLAYER_HEIGHT; 
+            const finalPlayerBox = new THREE.Box3().set(
+                new THREE.Vector3(player.position.x - PLAYER_RADIUS, player.position.y - finalPlayerCurrentHeight / 2, player.position.z - PLAYER_RADIUS),
+                new THREE.Vector3(player.position.x + PLAYER_RADIUS, player.position.y + finalPlayerCurrentHeight / 2, player.position.z + PLAYER_RADIUS)
+            );
+
+            for (const obstacle of obstacles) {
+                const obsData = obstacle.userData;
+                const obsBox = new THREE.Box3().setFromObject(obstacle);
+                
+                // Ignore the ramp mesh as it is only an activator, not a lethal obstacle.
+                if (obsData.type === 'ramp') {
+                    continue; 
+                }
+
+                if (finalPlayerBox.intersectsBox(obsBox)) {
+                    
+                    // --- TRAIN COLLISION LOGIC ---
+                    if (obsData.type === 'train') {
+                        // The player's center Y position
+                        const playerCenterY = player.position.y;
+                        
+                        // LETHAL THRESHOLD: The center of the train car (2.5m). 
+                        // If player center is above this, they are clipping the top half.
+                        const LETHAL_THRESHOLD = TRAIN_HEIGHT_CENTER_Y; // 2.5m
+                        
+                        // Check if the player is clipping the top half of the train
+                        const isClippingTopHalf = playerCenterY > LETHAL_THRESHOLD; 
+
+                        if (isClippingTopHalf) {
+                            // CASE A: Clipping TOP HALF (SAFE - instantly snap to roof)
+                            
+                            // 1. Ensure the player is snapped to the roof surface Y
+                            player.position.y = TRAIN_TOP_Y;
+                            
+                            // 2. Handle lateral movement (jumping/moving between adjacent trains)
+                            if (obsData.lane !== currentLane) {
+                                // Instant snap to the new train's lane center.
+                                currentLane = obsData.lane; 
+                                player.position.x = LANES[currentLane]; 
+                            }
+                            
+                            // 3. Activate the safety sequence if they jumped onto the train mid-run
+                            if (!isTrainSequenceActive) {
+                                isTrainSequenceActive = true;
+                                trainSequenceTimer = 0; 
+                                // Grant a fixed short sequence duration for safety/running off
+                                currentSequenceDuration = 100; 
+                            }
+
+                            continue; // Collision handled (safe).
+
+                        } else {
+                            // CASE B: Clipping BOTTOM HALF (DANGEROUS)
+
+                            // 1. Lethal Frontal Hit (Low AND in current lane)
+                            if (obsData.lane === currentLane) {
+                                handleGameOver(`Ran straight into the lower front of the train!`);
+                                return;
+                            } 
+                            
+                            // 2. Lateral/Side Hit (Blocking adjacent train)
+                            else {
+                                // Block the lane change by snapping back to the current lane center.
+                                player.position.x = LANES[currentLane];
+                                continue; // Blocked but safe.
+                            }
+                        }
+                    } 
+                    
+                    // --- BARRIER COLLISION LOGIC ---
+                    else if (obsData.type === 'barrier') {
+                        // We only care about barriers in the player's current lane.
+                        if (obsData.lane === currentLane) {
+                            // Collision with barrier: Trip only if we are NOT high enough to clear it
+                            if (player.position.y <= obsData.height * 2) { 
+                                handleGameOver(`Tripped over the barrier!`);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * Main game loop, called on every frame.
+         */
+        function animate() {
+            if (gameOver) return;
+
+            requestAnimationFrame(animate);
+
+            // Update score
+            score += playerSpeed * 10;
+            scoreElement.textContent = `Score: ${Math.floor(score)}`;
+
+            // Dynamic Camera Adjustment for Train Sequence
+            camera.position.y = CAMERA_INITIAL_Y + cameraOffset;
+            camera.lookAt(0, camera.position.y - 1, 10); // Look slightly down/ahead
+
+            // Update game objects
+            updatePlayer();
+            updateObstacles();
+
+            // Render the scene
+            renderer.render(scene, camera);
+        }
+
+        /**
+         * Handles keyboard input for desktop testing/start.
+         */
+        function handleKeyDown(event) {
+            if (gameOver) {
+                if (event.code === 'Space') {
+                    startGame();
+                }
+                return;
+            }
+
+            // Duck/Stand logic is separate and can be done during sequence if necessary
+            if (event.code === 'ArrowDown' || event.code === 'KeyS') {
+                duck(true);
+            }
+
+            // Lane change is allowed regardless of train state
+            if (event.code === 'ArrowLeft' || event.code === 'KeyA') {
+                changeLane(-1);
+            }
+            if (event.code === 'ArrowRight' || event.code === 'KeyD') {
+                changeLane(1);
+            }
+            
+            // Jump is allowed regardless of train state (logic handles constraints)
+            if (event.code === 'ArrowUp' || event.code === 'KeyW') {
+                jump();
+            }
+
+            if (event.code === 'Space') {
+                if (msgBox.style.display === 'flex') {
+                    startGame();
+                }
+            }
+        }
+
+        /**
+         * Handles key up event for stopping duck action.
+         */
+        function handleKeyUp(event) {
+            if (event.code === 'ArrowDown' || event.code === 'KeyS') {
+                duck(false);
+            }
+        }
+
+        // --- Touch Control Variables and Logic ---
+        let touchstartX = 0;
+        let touchstartY = 0;
+        const SWIPE_THRESHOLD = 50;
+
+        /**
+         * Records the start position of a touch.
+         */
+        function handleTouchStart(event) {
+            touchstartX = event.changedTouches[0].screenX;
+            touchstartY = event.changedTouches[0].screenY;
+
+            if (gameOver) {
+                startGame();
+            } else if (msgBox.style.display === 'flex') {
+                startGame();
+            }
+        }
+
+        /**
+         * Processes the swipe gesture based on touch movement.
+         */
+        function handleTouchEnd(event) {
+            if (gameOver) return;
+
+            const touchendX = event.changedTouches[0].screenX;
+            const touchendY = event.changedTouches[0].screenY;
+
+            const diffX = touchendX - touchstartX;
+            const diffY = touchendY - touchstartY;
+
+            // Check if it's a significant swipe
+            if (Math.abs(diffX) > SWIPE_THRESHOLD || Math.abs(diffY) > SWIPE_THRESHOLD) {
+                if (Math.abs(diffX) > Math.abs(diffY)) {
+                    // Horizontal swipe (Lane Change)
+                    if (diffX > 0) { changeLane(-1); } else { changeLane(1); } // Forced Inversion for game feel
+                } else {
+                    // Vertical swipe (Jump/Duck)
+                    if (diffY < 0) {
+                        jump(); // Swipe Up (Jump)
+                    } else {
+                        // Swipe Down (Duck)
+                        duck(true);
+                        // Release duck after a short delay for mobile feel
+                        setTimeout(() => duck(false), 500);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Attempts to change the player's lane.
+         */
+        function changeLane(direction) {
+            const newLane = currentLane + direction;
+            if (newLane >= 0 && newLane < LANES.length) {
+                currentLane = newLane;
+            }
+        }
+
+        /**
+         * Initiates a player jump action.
+         */
+        function jump() {
+            // Allow jump if:
+            // 1. Not already jumping
+            // 2. Player is near the true base Y (current floor)
+            if (!isJumping && (player.position.y < TRAIN_TOP_Y + 0.1)) { 
+                isJumping = true;
+                jumpTimer = JUMP_DURATION_FRAMES;
+            }
+        }
+
+        /**
+         * Initiates or ends a player duck action.
+         */
+        function duck(state) {
+            // Cannot duck while actively jumping or on a train
+            if (!isJumping && !isTrainSequenceActive) {
+                isDucking = state;
+            }
+        }
+
+        /**
+         * Cleans up the game for a new run.
+         */
+        function resetGame() {
+            // Clear obstacles
+            obstacles.forEach(obstacle => scene.remove(obstacle));
+            obstacles = [];
+
+            // Reset player state
+            currentLane = 1;
+            player.position.set(LANES[currentLane], PLAYER_GROUND_Y, 0);
+            isJumping = false;
+            isDucking = false;
+            onTrain = false;
+            isTrainSequenceActive = false;
+            trainSequenceTimer = 0;
+            currentSequenceDuration = 0;
+            player.scale.y = 1;
+            
+            // Reset spawning
+            obstacleSpawnTimer = 0;
+            nextSpawnDelay = 150;
+
+            // Reset scores and state
+            score = 0;
+            gameOver = false;
+            obstacleSpeed = BASE_OBSTACLE_SPEED; // Reset to base speed
+            scoreElement.textContent = `Score: 0`;
+        }
+
+        /**
+         * Starts the game loop and hides the message box.
+         */
+        function startGame() {
+            msgBox.style.display = 'none';
+            resetGame();
+            animate();
+        }
+
+        /**
+         * Stops the game loop and shows the game over message.
+         */
+        function handleGameOver(reason) {
+            gameOver = true;
+
+            msgTitle.textContent = "Game Over!";
+            msgContent.innerHTML = `${reason}<br>Final Score: ${Math.floor(score)}<br>Press Space or Tap to Try Again.`;
+            restartButton.textContent = "Play Again";
+            msgBox.style.display = 'flex';
+        }
+
+        /**
+         * Handles window resize to keep the game responsive.
+         */
+        function onWindowResize() {
+            if (!renderer) return;
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+
+        // --- Initialization on Window Load ---
+        window.onload = function () {
+            initThree();
+            onWindowResize(); // Set initial size
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+
+            // Setup Touch Controls on the game container
+            container.addEventListener('touchstart', handleTouchStart, false);
+            container.addEventListener('touchend', handleTouchEnd, false);
+
+            // Show initial start message
+            msgBox.style.display = 'flex';
+        }
+
+    </script>
+</body>
+</html>
