@@ -193,12 +193,9 @@
         // --- Global Materials ---
         const PLAYER_MATERIAL = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red
 
-        const container = document.getElementById('game-container');
-        const scoreElement = document.getElementById('score');
-        const msgBox = document.getElementById('message-box');
-        const msgTitle = document.getElementById('msg-title');
-        const msgContent = document.getElementById('msg-content');
-        const restartButton = document.querySelector('.restart-button');
+        // IMPORTANT: Define these variables globally so they are accessible by all functions
+        let container, scoreElement, msgBox, msgTitle, msgContent, restartButton;
+
 
         // --- Utility Functions ---
 
@@ -206,6 +203,14 @@
          * Sets up the main Three.js scene, camera, and renderer.
          */
         function initThree() {
+            // Get DOM elements here for safety and accessibility
+            container = document.getElementById('game-container');
+            scoreElement = document.getElementById('score');
+            msgBox = document.getElementById('message-box');
+            msgTitle = document.getElementById('msg-title');
+            msgContent = document.getElementById('msg-content');
+            restartButton = document.querySelector('.restart-button');
+            
             // 1. Scene Setup
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87ceeb); // Light blue sky
@@ -808,7 +813,7 @@
          * Handles window resize to keep the game responsive.
          */
         function onWindowResize() {
-            if (!renderer) return;
+            if (!renderer || !container) return; // Add container check
             const width = container.clientWidth;
             const height = container.clientHeight;
             camera.aspect = width / height;
@@ -817,8 +822,9 @@
         }
 
 
-        // --- Initialization on Window Load ---
-        window.onload = function () {
+        // --- Initialization on Document Ready ---
+        document.addEventListener('DOMContentLoaded', function () {
+            // Initialize everything after the full DOM structure is loaded
             initThree();
             onWindowResize(); // Set initial size
             window.addEventListener('resize', onWindowResize);
@@ -831,7 +837,7 @@
 
             // Show initial start message
             msgBox.style.display = 'flex';
-        }
+        });
 
     </script>
 </body>
