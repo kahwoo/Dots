@@ -1,0 +1,245 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pat the Cat 🐱</title>
+<style>
+  body {
+    margin:0; background:#f8f0e3; font-family:sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    overflow:hidden; touch-action:none;
+  }
+  h1 { margin:10px 0; font-size:1.6em; }
+  #gameArea {
+    position:relative; width:100%; height:70vh;
+    background:#fff9f2; border:3px solid #ccc; border-radius:15px; overflow:hidden;
+  }
+  #cat { position:absolute; font-size:64px; user-select:none; }
+  .treat, .drop, .poop {
+    position:absolute; font-size:32px; user-select:none;
+  }
+  .touchEmoji {
+    position:absolute; font-size:32px; opacity:0.8;
+    pointer-events:none; animation:fade 0.4s ease-out forwards;
+  }
+  @keyframes fade { from {opacity:0.8;} to {opacity:0; transform:scale(0.7);} }
+  #hud {
+    display:flex; justify-content:space-around; align-items:center;
+    flex-wrap:wrap; width:100%; background:#eee; padding:8px; gap:5px;
+  }
+  button {
+    font-size:1em; padding:8px 12px; border-radius:8px;
+    border:none; background:#d0bfa1;
+  }
+  .barWrap { display:flex; flex-direction:column; align-items:center; width:40%; }
+  .barLabel { font-size:0.8em; }
+  .barOuter { width:100%; background:#ddd; border-radius:5px; overflow:hidden; }
+  .barInner { height:10px; background:#4caf50; border-radius:5px; width:100%; transition:width 0.3s; }
+</style>
+</head>
+<body>
+<h1>Pat the Cat 🐱</h1>
+<div id="hud">
+  <div class="barWrap">
+    <div class="barLabel">Happiness</div>
+    <div class="barOuter"><div id="happyBar" class="barInner"></div></div>
+  </div>
+  <div class="barWrap">
+    <div class="barLabel">Cleanliness</div>
+    <div class="barOuter"><div id="cleanBar" class="barInner"></div></div>
+  </div>
+  <button id="petBtn">🤚 Pet</button>
+  <button id="brushBtn">🪮 Brush</button>
+  <button id="washBtn">🚿 Wash</button>
+  <button id="treatsBtn">🍣 Treats</button>
+</div>
+
+<div id="gameArea">
+  <div id="cat">🐱</div>
+</div>
+
+<script>
+const cat = document.getElementById('cat');
+const gameArea = document.getElementById('gameArea');
+const happyBar = document.getElementById('happyBar');
+const cleanBar = document.getElementById('cleanBar');
+const petBtn = document.getElementById('petBtn');
+const brushBtn = document.getElementById('brushBtn');
+const washBtn = document.getElementById('washBtn');
+const treatsBtn = document.getElementById('treatsBtn');
+
+// Sounds
+const petSound = new Audio('https://actions.google.com/sounds/v1/animals/cat_purr_close.ogg');
+const brushSound = new Audio('https://actions.google.com/sounds/v1/animals/cat_meow.ogg');
+const treatSound = new Audio('https://actions.google.com/sounds/v1/cartoon/pop.ogg');
+
+const happyFaces = ["😾","😿","🐱","😼","😺","😸","😼","😻"];
+let happiness = 70, cleanliness = 80;
+let mode = null, washMode=false, treatsOn=false;
+let fallInterval, moving=true;
+
+// === UI updates ===
+function updateUI(){
+  const hIndex = Math.min(Math.floor(happiness/13),7);
+  cat.textContent = happyFaces[hIndex];
+  happyBar.style.width = happiness+"%";
+  happyBar.style.background = happiness<30?"#f44336":happiness<70?"#ffeb3b":"#4caf50";
+  cleanBar.style.width = cleanliness+"%";
+  cleanBar.style.background = cleanliness<40?"#795548":"#90caf9";
+}
+
+// === Floating emoji under finger ===
+function showTouchEmoji(emoji, clientX, clientY){
+  const rect = gameArea.getBoundingClientRect();
+  const e = document.createElement("div");
+  e.className = "touchEmoji";
+  e.textContent = emoji;
+
+  // Adjust for game area offset
+  const x = clientX - rect.left - 16;
+  const y = clientY - rect.top - 16;
+
+  e.style.left = `${x}px`;
+  e.style.top = `${y}px`;
+
+  gameArea.appendChild(e);
+  setTimeout(()=>e.remove(),400);
+}
+
+// === Random cat movement ===
+function moveCatRandomly(){
+  if(!moving) return;
+  const newX = Math.random()*(gameArea.clientWidth-cat.clientWidth);
+  const newY = Math.random()*(gameArea.clientHeight-cat.clientHeight);
+  cat.style.transition="left 2s linear, top 2s linear";
+  cat.style.left=newX+"px";
+  cat.style.top=newY+"px";
+}
+setInterval(moveCatRandomly,2500);
+
+// === Button logic ===
+petBtn.onclick = ()=>{ mode = mode==="pet"?null:"pet"; washMode=false; updateMode(); }
+brushBtn.onclick = ()=>{ mode = mode==="brush"?null:"brush"; washMode=false; updateMode(); }
+washBtn.onclick = ()=>{
+  washMode=!washMode;
+  mode=washMode?null:mode;
+  updateMode();
+  if(washMode) fallInterval=setInterval(spawnDrop,700);
+  else { clearInterval(fallInterval); document.querySelectorAll(".drop").forEach(d=>d.remove()); }
+}
+treatsBtn.onclick = ()=>{
+  treatsOn=!treatsOn;
+  treatsBtn.textContent=treatsOn?"🍣 Stop Treats":"🍣 Treats";
+  if(treatsOn){fallInterval=setInterval(spawnTreat,800);} else { clearInterval(fallInterval); document.querySelectorAll(".treat").forEach(t=>t.remove()); }
+}
+
+function updateMode(){
+  petBtn.style.background = mode==="pet"?"#c1e1c1":"#d0bfa1";
+  brushBtn.style.background = mode==="brush"?"#c1e1c1":"#d0bfa1";
+  washBtn.style.background = washMode?"#c1e1c1":"#d0bfa1";
+}
+
+// === Touch handling ===
+gameArea.addEventListener("touchstart",e=>handleTouch(e.touches[0]));
+gameArea.addEventListener("touchmove",e=>handleTouch(e.touches[0]));
+let dragging=false, offsetX, offsetY;
+cat.addEventListener("touchstart",e=>{
+  if(mode) return;
+  dragging=true;
+  const t=e.touches[0]; offsetX=t.clientX-cat.offsetLeft; offsetY=t.clientY-cat.offsetTop;
+});
+window.addEventListener("touchmove",e=>{
+  if(!dragging) return;
+  const t=e.touches[0];
+  let x=t.clientX-offsetX, y=t.clientY-offsetY;
+  cat.style.left=Math.max(0,Math.min(x,gameArea.clientWidth-cat.clientWidth))+"px";
+  cat.style.top=Math.max(0,Math.min(y,gameArea.clientHeight-cat.clientHeight))+"px";
+});
+window.addEventListener("touchend",()=>dragging=false);
+
+function handleTouch(touch){
+  if(!mode) return;
+  const emoji = mode==="pet"?"🤚":"🪮";
+  showTouchEmoji(emoji,touch.clientX,touch.clientY);
+
+  const catRect=cat.getBoundingClientRect();
+  if(touch.clientX>catRect.left && touch.clientX<catRect.right && touch.clientY>catRect.top && touch.clientY<catRect.bottom){
+    if(mode==="pet"){ happiness=Math.min(100,happiness+0.3); petSound.play(); }
+    if(mode==="brush"){ happiness=Math.min(100,happiness+0.3); cleanliness=Math.min(100,cleanliness+0.3); brushSound.play(); }
+  }
+}
+
+// === Wash drops ===
+function spawnDrop(){
+  if(!washMode) return;
+  const drop=document.createElement("div");
+  drop.textContent="💧"; drop.className="drop";
+  drop.style.left=Math.random()*(gameArea.clientWidth-32)+"px"; drop.style.top="0px";
+  gameArea.appendChild(drop);
+  let top=0;
+  const interval=setInterval(()=>{
+    if(!washMode){ drop.remove(); clearInterval(interval); return; }
+    top+=1; drop.style.top=top+"px";
+    const r=drop.getBoundingClientRect(), c=cat.getBoundingClientRect();
+    if(r.bottom>=c.top && r.left<=c.right && r.right>=c.left){ cleanliness=Math.min(100,cleanliness+5); happiness=Math.max(0,happiness-2); drop.remove(); clearInterval(interval); }
+    if(top>gameArea.clientHeight) drop.remove();
+  },30);
+}
+
+// === Treats ===
+function spawnTreat(){
+  if(!treatsOn) return;
+  const t=document.createElement("div");
+  const good=Math.random()>0.25;
+  t.textContent = good?(Math.random()>0.5?"🐟":"🐠"):"🦴";
+  t.dataset.good=good;
+  t.className="treat";
+  t.style.left=Math.random()*(gameArea.clientWidth-32)+"px";
+  t.style.top="0px";
+  gameArea.appendChild(t);
+  let top=0;
+  const interval=setInterval(()=>{
+    top+=0.5; t.style.top=top+"px";
+    const r=t.getBoundingClientRect(), c=cat.getBoundingClientRect();
+    if(r.bottom>=c.top && r.top<=c.bottom && r.left<=c.right && r.right>=c.left){
+      if(t.dataset.good==="true"){ happiness=Math.min(100,happiness+10); cleanliness=Math.max(0,cleanliness-2); treatSound.play(); }
+      else{ happiness=Math.max(0,happiness-10); cleanliness=Math.max(0,cleanliness-3); }
+      t.remove(); clearInterval(interval);
+    }
+    if(top>gameArea.clientHeight) t.remove();
+  },20);
+}
+
+// === Poop ===
+function spawnPoop(){
+  const p=document.createElement("div");
+  p.textContent="💩"; p.className="poop";
+  p.style.left=Math.random()*(gameArea.clientWidth-40)+"px";
+  p.style.top=Math.random()*(gameArea.clientHeight-40)+"px";
+  gameArea.appendChild(p);
+  p.addEventListener("click",()=>p.remove());
+}
+setInterval(()=>{ if(Math.random()<0.25) spawnPoop(); },7000);
+
+// === Cleanliness decay near poop ===
+setInterval(()=>{
+  const catRect=cat.getBoundingClientRect();
+  document.querySelectorAll(".poop").forEach(p=>{
+    const r=p.getBoundingClientRect();
+    const dist=Math.hypot(catRect.left-r.left, catRect.top-r.top);
+    if(dist<100) cleanliness=Math.max(0,cleanliness-0.3-((100-dist)/50));
+  });
+},500);
+
+// === Gradual decay ===
+setInterval(()=>{
+  happiness=Math.max(0,happiness-0.05);
+  cleanliness=Math.max(0,cleanliness-0.02);
+  updateUI();
+},100);
+
+updateUI();
+</script>
+</body>
+</html>
