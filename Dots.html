@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Mini Dots Game - Refactored</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; overflow: hidden;
+    background: #111; color: #eee; font-family: sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  #controls {
+    padding: 10px;
+    display: flex; flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center; align-items: center;
+    background: #222;
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
+  }
+  select, input[type=color], button, label {
+    background: #333;
+    border: none;
+    color: #eee;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  input[type=checkbox] {
+    width: 18px; height: 18px; margin-right: 5px; vertical-align: middle; cursor: pointer;
+  }
+  input[type=text] {
+    background: #333; color: #eee; padding: 5px; border: none; border-radius: 4px;
+    width: 140px; display: none;
+  }
+  #score {
+    min-width: 90px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+  }
+  #gamewrap {
+    position: relative;
+    touch-action: none;
+    margin-top: 10px;
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 1/1;
+    border: 4px solid #555;
+    border-radius: 10px;
+    background: #222;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  #grid {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    touch-action: none;
+    position: relative;
+    z-index: 1;
+    border-radius: 6px;
+  }
+  canvas#lineCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 2;
+  }
+  circle.dot {
+    transition: transform 0.2s ease;
+  }
+  circle.selected {
+    filter: drop-shadow(0 0 5px #fff);
+  }
+  .bomb-btn {
+    background: #b22;
+    color: #fff;
+    font-weight: bold;
+    padding: 4px 10px;
+    border-radius: 5px;
+    user-select: none;
+  }
+  text.colorblind-label {
+    pointer-events: none;
+    fill: #fff;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <label for="gridSize">Grid Size:
+      <select id="gridSize">
+        <option value="6">6×6</option>
+        <option value="8" selected>8×8</option>
+        <option value="10">10×10</option>
+      </select>
+    </label>
+    <label for="colorCount">Colors:
+      <select id="colorCount">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="custom">Custom</option>
+      </select>
+    </label>
+    <input type="text" id="customColors" placeholder="#f00,#0f0,#00f,#ff0,#f0f,#0ff,#fff,#000" />
+    <label><input type="checkbox" id="colorblindToggle" />Colorblind Mode</label>
+    <label><input type="checkbox" id="debugToggle" />Debug Mode</label>
+    <button id="startBtn">Start</button>
+    <button id="restartBtn">Restart</button>
+    <button id="undoBtn" disabled>Undo</button>
+    <button id="bombBtn" style="display:none" class="bomb-btn">BOMB</button>
+    <div id="score">Score: 0</div>
+  </div>
+  <div id="gamewrap">
+    <canvas id="lineCanvas"></canvas>
+    <svg id="grid" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+<script>
+(() => {
+  const q = id => document.getElementById(id);
+
+  // UI Elements
+  const gridEl = q("grid");
+  const lineCanvas = q("lineCanvas");
+  const ctx = lineCanvas.getContext("2d");
+  const startBtn = q("startBtn");
+  const restartBtn = q("restartBtn");
+  const undoBtn = q("undoBtn");
+  const bombBtn = q("bombBtn");
+  const scoreEl = q("score");
+  const colorblindToggle = q("colorblindToggle");
+  const debugToggle = q("debugToggle");
+  const gridSizeSel = q("gridSize");
+  const colorCountSel = q("colorCount");
+  const customColorsInput = q("customColors");
+
+  // Game state variables
+  let gridSize = 8;
+  let colorCount = 4;
+  let colors = [];
+  let colorblind = false;
+  let debug = false;
+
+  // Grid is an array of cell objects: {el, color, letter, textEl}
+  let grid = [];
+
+  // Selected dots indices during drag
+  let selectedDots = [];
+
+  // Dragging state
+  let isDragging = false;
+
+  // Score and bombs
+  let score = 0;
+  let bombColor = null;   // color that bomb will remove
+  let bombActive = false; // whether bomb can be used now
+
+  // Undo stack
+  let undoStack = [];
+  const maxUndo = 20;
+
+  // Loop closed flag - true if player connected back to first dot
+  let loopClosed = false;
+
+  // --- Utility functions ---
+
+  // Default colors (8 max)
+  function genDefaultColors(n) {
+    return ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#46f0f0", "#f032e6"].slice(0, n);
+  }
+
+  // Parse custom colors input
+  function parseCustomColors(s) {
+    let arr = s.split(",").map(c => c.trim()).filter(c => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c));
+    return arr.length ? arr : genDefaultColors(colorCount);
+  }
+
+  // Letter labels for colorblind mode
+  function letterForColor(c) {
+    const letters = ["A", "B", "C", "D", "E", "F", "G", "H"];
+    let idx = colors.indexOf(c);
+    return idx >= 0 ? letters[idx] : "";
+  }
+
+  // --- Grid initialization and drawing ---
+
+function setupGrid() {
+  gridEl.innerHTML = "";
+  gridEl.style.gridTemplateColumns = `repeat(${gridSize}, 1fr)`;
+  gridEl.style.gridTemplateRows = `repeat(${gridSize}, 1fr)`;
+  grid = [];
+  for (let i = 0; i < gridSize * gridSize; i++) {
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.classList.add("dot");
+    dot.setAttribute("r", "0");
+    dot.setAttribute("cx", "50%");
+    dot.setAttribute("cy", "50%");
+    gridEl.appendChild(dot);
+    grid.push({ el: dot, color: null, letter: "", textEl: null });
+  }
+  assignColorsRandom();
+  drawAllDots();
+  loopClosed = false;
+}
+
+function assignColorsRandom() {
+  for (let i = 0; i < grid.length; i++) {
+    let c = colors[Math.floor(Math.random() * colors.length)];
+    grid[i].color = c;
+    grid[i].letter = colorblind ? letterForColor(c) : "";
+  }
+}
+
+function drawAllDots() {
+  const size = gridEl.clientWidth / gridSize;
+  grid.forEach((cell, i) => {
+    const cx = size * (i % gridSize) + size / 2;
+    const cy = size * Math.floor(i / gridSize) + size / 2;
+    cell.el.setAttribute("cx", cx);
+    cell.el.setAttribute("cy", cy);
+    cell.el.setAttribute("r", size / 2 - 4);
+    cell.el.setAttribute("fill", cell.color || "transparent");
+
+    // Draw letter for colorblind mode
+    if (colorblind) {
+      if (!cell.textEl) {
+        cell.textEl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        cell.textEl.classList.add("colorblind-label");
+        cell.textEl.setAttribute("text-anchor", "middle");
+        cell.textEl.setAttribute("dominant-baseline", "middle");
+        cell.textEl.setAttribute("font-size", size / 2);
+        gridEl.appendChild(cell.textEl);
+      }
+      cell.textEl.textContent = cell.letter || "";
+      cell.textEl.setAttribute("x", cx);
+      cell.textEl.setAttribute("y", cy);
+    } else if (cell.textEl) {
+      gridEl.removeChild(cell.textEl);
+      cell.textEl = null;
+    }
+  });
+  updateSelectionVisuals();
+}
+
+  // Highlight selected dots
+  function updateSelectionVisuals() {
+    grid.forEach(c => c.el.classList.remove("selected"));
+    selectedDots.forEach(i => grid[i].el.classList.add("selected"));
+  }
+
+  // --- Index and adjacency helpers ---
+
+  // Convert x,y grid coords to index in grid array
+  function getIndexFromCoord(x, y) {
+    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) return -1;
+    return y * gridSize + x;
+  }
+
+  // Check if two indices are adjacent horizontally or vertically
+  function areAdjacent(i1, i2) {
+    let x1 = i1 % gridSize, y1 = Math.floor(i1 / gridSize);
+    let x2 = i2 % gridSize, y2 = Math.floor(i2 / gridSize);
+    return (x1 === x2 && Math.abs(y1 - y2) === 1) || (y1 === y2 && Math.abs(x1 - x2) === 1);
+  }
+
+  // Get pixel coordinates of dot center for drawing lines
+  function getDotCoords(i) {
+    const s = gridEl.clientWidth / gridSize;
+    return { x: (i % gridSize) * s + s / 2, y: Math.floor(i / gridSize) * s + s / 2 };
+  }
+
+  // --- Path validation helpers ---
+
+  // Check if two lines (p1->p2 and p3->p4) intersect (to prevent path crossing)
+  function linesIntersect(p1, p2, p3, p4) {
+    function ccw(a, b, c) {
+      return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
+    }
+    return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+  }
+
+  // Check if point p is inside polygon poly (array of points)
+  function pointInPolygon(p, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi > p.y) !== (yj > p.y)) &&
+        (p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  // Determine which dots are inside the polygon formed by loop path
+  function setInsideLoop(loop) {
+    const insideMap = new Array(grid.length).fill(false);
+    const polygonPoints = loop.map(i => getDotCoords(i));
+    for (let i = 0; i < grid.length; i++) {
+      const pt = getDotCoords(i);
+      if (pointInPolygon(pt, polygonPoints)) insideMap[i] = true;
+    }
+    // Exclude dots on the loop path itself
+    loop.forEach(i => insideMap[i] = false);
+    return insideMap;
+  }
+
+  // --- Input handling ---
+
+  // Convert pointer event to grid index
+function getPointerGridIndex(e) {
+  const r = gridEl.getBoundingClientRect();
+  const s = r.width / gridSize;
+  const x = Math.floor((e.clientX - r.left) / s);
+  const y = Math.floor((e.clientY - r.top) / s);
+  return getIndexFromCoord(x, y);
+}
+
+function handlePointerDown(e) {
+  if (bombActive === "awaitingPick") {
+    const idx = getPointerGridIndex(e);
+    if (idx >= 0 && grid[idx].color) {
+      handleBombDotPick(idx);
+      selectedDots = [];
+      updateSelectionVisuals();
+      drawDebugLines();
+    }
+    e.preventDefault();
+    return;
+  }
+  if (e.pointerType === "mouse" && e.button !== 0) return; // left-click only
+  const p = getPointerGridIndex(e);
+  if (p >= 0 && grid[p].color !== null) {
+    selectedDots = [p];
+    isDragging = true;
+    loopClosed = false;
+    updateSelectionVisuals();
+    drawDebugLines();
+  }
+}
+
+function handlePointerMove(e) {
+  if (!isDragging) return;
+  const p = getPointerGridIndex(e);
+  if (p < 0) return;
+  
+  const last = selectedDots[selectedDots.length - 1];
+  if (p === last) return; // same dot ignore
+
+  // Backtracking
+  if (selectedDots.length >= 2 && p === selectedDots[selectedDots.length - 2]) {
+    selectedDots.pop();
+    updateSelectionVisuals();
+    drawDebugLines();
+    return;
+  }
+
+  // Loop close
+  if (selectedDots.includes(p)) {
+    if (selectedDots.length >= 4 && p === selectedDots[0]) {
+      selectedDots.push(p);
+      loopClosed = true;
+      updateSelectionVisuals();
+      drawDebugLines();
+    }
+    return;
+  }
+
+  // Adjacent check
+  if (!areAdjacent(last, p)) return;
+
+  // Prevent path crossing
+  for (let i = 0; i < selectedDots.length - 2; i++) {
+    const a = selectedDots[i];
+    const b = selectedDots[i + 1];
+    if (linesIntersect(getDotCoords(a), getDotCoords(b), getDotCoords(last), getDotCoords(p))) {
+      return;
+    }
+  }
+
+  // Color match check
+  if (grid[p].color !== grid[selectedDots[0]].color) return;
+
+  // Add new dot to path
+  selectedDots.push(p);
+  updateSelectionVisuals();
+  drawDebugLines();
+}
+
+function handlePointerUp(e) {
+  if (!isDragging) return;
+  isDragging = false;
+
+  if (selectedDots.length < 2) {
+    selectedDots = [];
+    updateSelectionVisuals();
+    drawDebugLines();
+    return;
+  }
+
+  if (loopClosed) {
+    selectedDots.pop(); // remove duplicate closing dot
+    handleLoopClear(selectedDots);
+  } else {
+    handleClear(selectedDots);
+  }
+
+  selectedDots = [];
+  loopClosed = false;
+  updateSelectionVisuals();
+  drawDebugLines();
+  updateScoreUI();
+}
+
+//xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+// Called when user finishes a loop selection
+function handleLoopClear(loopPath) {
+  saveUndoState();
+
+  const loopColor = grid[loopPath[0]].color;
+  if (!loopColor) return;
+
+  const insideMap = setInsideLoop(loopPath);
+  let enclosedCount = 0;
+
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i].color === loopColor && insideMap[i] && !loopPath.includes(i)) {
+      enclosedCount++;
+    }
+  }
+
+  // Special 4-dot adjacent loop: remove all dots of that color, no bomb
+  if (loopPath.length === 4 && areAdjacent(loopPath[0], loopPath[loopPath.length - 1])) {
+    removeAllDotsOfColor(loopColor);
+    bombActive = false;
+    bombColor = null;
+    bombBtn.style.display = "none";
+    updateScoreUI();
+    return;
+  }
+
+  if (loopPath.length > 4) {
+    removeAllDotsOfColor(loopColor);
+    updateScoreUI();
+    if (enclosedCount > 0) {
+      bombActive = true;
+      bombColor = loopColor;
+      bombBtn.style.display = "inline-block";
+    } else {
+      bombActive = false;
+      bombColor = null;
+      bombBtn.style.display = "none";
+    }
+    return;
+  }
+
+  // For smaller loops (not the special case), remove path dots + enclosed dots
+  let removedCount = 0;
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i].color === loopColor) {
+      if (loopPath.includes(i) || insideMap[i]) {
+        grid[i].color = null;
+        grid[i].letter = "";
+        removedCount++;
+      }
+    }
+  }
+
+  score += removedCount;
+  applyGravity();
+  generateNewDots();
+
+  if (enclosedCount > 0) {
+    bombActive = true;
+    bombColor = loopColor;
+    bombBtn.style.display = "inline-block";
+  } else {
+    bombActive = false;
+    bombColor = null;
+    bombBtn.style.display = "none";
+  }
+
+  updateScoreUI();
+}
+
+// Utility function to remove all dots of a given color
+function removeAllDotsOfColor(color) {
+  let removedCount = 0;
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i].color === color) {
+      grid[i].color = null;
+      grid[i].letter = "";
+      removedCount++;
+    }
+  }
+  score += removedCount;
+  applyGravity();
+  generateNewDots();
+}
+
+bombBtn.onclick = () => {
+  if (!bombActive) return;
+  alert("Bomb active! Tap a dot on the board to remove all dots of that color.");
+  bombActive = "awaitingPick";
+  bombBtn.style.display = "none";
+};
+
+function handleBombDotPick(index) {
+  if (bombActive !== "awaitingPick") return;
+  const chosenColor = grid[index].color;
+  if (!chosenColor) {
+    alert("Invalid color selected!");
+    return;
+  }
+  saveUndoState();
+  removeAllDotsOfColor(chosenColor);
+  bombActive = false;
+  bombColor = null;
+  bombBtn.style.display = "none";
+  updateScoreUI();
+}
+
+
+////////////////////////
+  // --- Dot clearing logic ---
+
+  // Clear dots from given indices (normal path)
+  function handleClear(indices) {
+    if (indices.length < 1) return;
+    saveUndoState();
+
+    const clr = grid[indices[0]].color;
+
+    if (bombActive) {
+      // If bomb was active but player made normal move, cancel bomb state
+      bombActive = false;
+      bombColor = null;
+      bombBtn.style.display = "none";
+    }
+
+    indices.forEach(i => {
+      grid[i].color = null;
+      grid[i].letter = "";
+    });
+
+    applyGravity();
+    generateNewDots();
+    score += indices.length;
+  }
+
+  // --- Gravity and refill ---
+
+function applyGravity() {
+  for (let x = 0; x < gridSize; x++) {
+    let emptySlots = 0;
+    for (let y = gridSize - 1; y >= 0; y--) {
+      const i = getIndexFromCoord(x, y);
+      if (!grid[i].color) {
+        emptySlots++;
+      } else if (emptySlots > 0) {
+        const target = getIndexFromCoord(x, y + emptySlots);
+        grid[target].color = grid[i].color;
+        grid[target].letter = grid[i].letter;
+        grid[i].color = null;
+        grid[i].letter = "";
+      }
+    }
+  }
+}
+
+function generateNewDots() {
+  for (let x = 0; x < gridSize; x++) {
+    for (let y = 0; y < gridSize; y++) {
+      const i = getIndexFromCoord(x, y);
+      if (!grid[i].color) {
+        const c = colors[Math.floor(Math.random() * colors.length)];
+        grid[i].color = c;
+        grid[i].letter = colorblind ? letterForColor(c) : "";
+      }
+    }
+  }
+  drawAllDots();
+}
+
+  // --- Undo management ---
+
+function saveUndoState() {
+  if (undoStack.length >= maxUndo) undoStack.shift();
+  const gridState = grid.map(c => ({color: c.color, letter: c.letter}));
+  undoStack.push({
+    grid: gridState,
+    score: score,
+    bombColor: bombColor,
+    bombActive: bombActive
+  });
+  undoBtn.disabled = false;
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  const state = undoStack.pop();
+  state.grid.forEach((c, i) => {
+    grid[i].color = c.color;
+    grid[i].letter = c.letter;
+  });
+  score = state.score;
+  bombColor = state.bombColor;
+  bombActive = state.bombActive;
+  bombBtn.style.display = bombActive ? "inline-block" : "none";
+  drawAllDots();
+  updateScoreUI();
+  undoBtn.disabled = undoStack.length === 0;
+}
+
+  // --- Bomb activation ---
+
+  function activateBomb() {
+    if (!bombActive || !bombColor) return;
+    saveUndoState();
+    for (let i = 0; i < grid.length; i++) {
+      if (grid[i].color === bombColor) {
+        grid[i].color = null;
+        grid[i].letter = "";
+      }
+    }
+    bombActive = false;
+    bombColor = null;
+    bombBtn.style.display = "none";
+    applyGravity();
+    generateNewDots();
+    updateScoreUI();
+  }
+
+  // --- Score UI update ---
+
+  function updateScoreUI() {
+    scoreEl.textContent = "Score: " + score;
+  }
+
+  // --- Drawing path lines on canvas ---
+
+  function drawDebugLines() {
+    const w = gridEl.clientWidth;
+    const h = gridEl.clientHeight;
+    lineCanvas.width = w * devicePixelRatio;
+    lineCanvas.height = h * devicePixelRatio;
+    lineCanvas.style.width = w + "px";
+    lineCanvas.style.height = h + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    ctx.clearRect(0, 0, w, h);
+
+    if (selectedDots.length < 2) return;
+
+    ctx.lineWidth = 6;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "white";
+    ctx.fillStyle = "white";
+
+    ctx.beginPath();
+
+    for (let i = 0; i < selectedDots.length; i++) {
+      const {x, y} = getDotCoords(selectedDots[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+
+    ctx.stroke();
+
+    if (loopClosed) {
+      // Draw a circle at the closing point
+      const {x, y} = getDotCoords(selectedDots[0]);
+      ctx.beginPath();
+      ctx.arc(x, y, 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // --- Event listeners ---
+
+  startBtn.addEventListener("click", () => {
+    gridSize = parseInt(gridSizeSel.value);
+    colorCount = colorCountSel.value === "custom" ? parseCustomColors(customColorsInput.value).length : parseInt(colorCountSel.value);
+    if (colorCountSel.value === "custom") {
+      colors = parseCustomColors(customColorsInput.value);
+    } else {
+      colors = genDefaultColors(colorCount);
+    }
+    colorblind = colorblindToggle.checked;
+    debug = debugToggle.checked;
+    score = 0;
+    bombActive = false;
+    bombColor = null;
+    bombBtn.style.display = "none";
+    undoStack = [];
+    undoBtn.disabled = true;
+    setupGrid();
+    updateScoreUI();
+  });
+
+  restartBtn.addEventListener("click", () => {
+    startBtn.click();
+  });
+
+  undoBtn.addEventListener("click", undo);
+
+  bombBtn.addEventListener("click", () => {
+    if (bombActive) activateBomb();
+  });
+
+  colorCountSel.addEventListener("change", () => {
+    if (colorCountSel.value === "custom") {
+      customColorsInput.style.display = "inline-block";
+    } else {
+      customColorsInput.style.display = "none";
+    }
+  });
+
+  // Pointer events on grid container
+  gridEl.addEventListener("pointerdown", handlePointerDown);
+  gridEl.addEventListener("pointermove", handlePointerMove);
+  window.addEventListener("pointerup", handlePointerUp);
+
+  // Handle window resize to redraw dots and lines
+  window.addEventListener("resize", () => {
+    drawAllDots();
+    drawDebugLines();
+  });
+
+  // Initial setup on load
+  window.onload = () => {
+    colors = genDefaultColors(colorCount);
+    setupGrid();
+    updateScoreUI();
+  };
+
+})();
+</script>
+</body>
+</html>
