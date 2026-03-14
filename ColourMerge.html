@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chroma Mix: Persistent Palette</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --sidebar-bg: #1e293b;
+            --text-color: #f8fafc;
+            --border-color: #334155;
+            --hover-color: #475569;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            display: flex; overflow: hidden; touch-action: none;
+        }
+
+        #game-container { flex: 1; position: relative; background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%); }
+        canvas { display: block; width: 100%; height: 100%; user-select: none; }
+
+        #sidebar {
+            width: 260px; background-color: var(--sidebar-bg);
+            border-left: 2px solid var(--border-color);
+            display: flex; flex-direction: column; z-index: 10;
+        }
+
+        #sidebar-header {
+            padding: 15px; font-size: 16px; font-weight: bold; text-align: center;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        #sidebar-header span { display: block; font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+        #color-list {
+            flex: 1; overflow-y: auto; padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(45px, 1fr));
+            gap: 8px;
+            align-content: flex-start;
+        }
+
+        .color-btn {
+            aspect-ratio: 1 / 1;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.1s, border-color 0.2s;
+            position: relative;
+        }
+
+        .color-btn:hover { transform: scale(1.1); border-color: white; z-index: 2; }
+
+        /* Hex Tooltip */
+        .color-btn::after {
+            content: attr(data-hex);
+            position: absolute; bottom: -25px; left: 50%;
+            transform: translateX(-50%);
+            background: black; color: white;
+            font-size: 10px; padding: 2px 5px;
+            border-radius: 4px; opacity: 0; pointer-events: none;
+            font-family: monospace; white-space: nowrap;
+        }
+        .color-btn:hover::after { opacity: 1; }
+
+        #reset-btn {
+            padding: 10px; font-size: 11px; color: #ef4444; 
+            background: none; border: none; cursor: pointer; opacity: 0.6;
+        }
+        #reset-btn:hover { opacity: 1; text-decoration: underline; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #sidebar { width: 100%; height: 25%; border-left: none; border-top: 2px solid var(--border-color); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="sidebar">
+        <div id="sidebar-header">
+            Color Archive
+            <span id="counter">Found: 0</span>
+        </div>
+        <div id="color-list"></div>
+        <button id="reset-btn" onclick="clearSavedPalette()">Reset Palette</button>
+    </div>
+
+    <script>
+        const seedColors = [
+            { rgb: [255, 0, 0] },
+            { rgb: [0, 255, 0] },
+            { rgb: [0, 0, 255] }
+        ];
+
+        let discoveredColors = new Map(); 
+        let nodes = [];
+        let particles = [];
+        let draggingNode = null;
+        let dragOffsetX = 0, dragOffsetY = 0;
+        let lastClickTime = 0;
+        let lastClickedNode = null;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const colorList = document.getElementById('color-list');
+
+        function resize() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function rgbToHex(r, g, b) {
+            const toHex = (n) => Math.round(n).toString(16).padStart(2, '0').toUpperCase();
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        }
+
+        // --- STORAGE LOGIC ---
+        function savePalette() {
+            const data = Array.from(discoveredColors.entries());
+            localStorage.setItem('chroma_palette', JSON.stringify(data));
+        }
+
+        function loadPalette() {
+            const saved = localStorage.getItem('chroma_palette');
+            if (saved) {
+                const data = JSON.parse(saved);
+                discoveredColors = new Map(data);
+            } else {
+                // Initialize with seeds if empty
+                seedColors.forEach(c => {
+                    const hex = rgbToHex(...c.rgb);
+                    discoveredColors.set(hex, c.rgb);
+                });
+            }
+        }
+
+        function clearSavedPalette() {
+            if (confirm("Reset your entire color archive?")) {
+                localStorage.removeItem('chroma_palette');
+                location.reload();
+            }
+        }
+
+        class Node {
+            constructor(x, y, rgb) {
+                this.x = x; this.y = y; this.rgb = rgb;
+                this.hex = rgbToHex(...rgb);
+                this.vx = (Math.random()-0.5)*4; this.vy = (Math.random()-0.5)*4;
+                this.radius = 40;
+            }
+            update() {
+                if (this === draggingNode) return;
+                this.x += this.vx; this.y += this.vy;
+                this.vx *= 0.99; this.vy *= 0.99;
+
+                if (this.x - this.radius < 0) { this.x = this.radius; this.vx *= -0.8; }
+                else if (this.x + this.radius > canvas.width) { this.x = canvas.width - this.radius; this.vx *= -0.8; }
+                if (this.y - this.radius < 0) { this.y = this.radius; this.vy *= -0.8; }
+                else if (this.y + this.radius > canvas.height) { this.y = canvas.height - this.radius; this.vy *= -0.8; }
+            }
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 20; ctx.shadowColor = `rgb(${this.rgb.join(',')})`;
+                ctx.fillStyle = `rgb(${this.rgb.join(',')})`;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "rgba(255,255,255,0.2)";
+                ctx.lineWidth = 2; ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, rgb) {
+                this.x = x; this.y = y;
+                this.color = `rgb(${rgb.join(',')})`;
+                this.vx = (Math.random()-0.5)*12; this.vy = (Math.random()-0.5)*12;
+                this.life = 1.0;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life; ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+                this.x += this.vx; this.y += this.vy; this.life -= 0.03;
+            }
+        }
+
+        function handlePointerDown(e) {
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX || (e.touches ? e.touches[0].clientX : 0)) - rect.left;
+            const py = (e.clientY || (e.touches ? e.touches[0].clientY : 0)) - rect.top;
+            const now = Date.now();
+
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                if (Math.hypot(px - nodes[i].x, py - nodes[i].y) < nodes[i].radius) {
+                    if (lastClickedNode === nodes[i] && (now - lastClickTime) < 300) {
+                        const clone = new Node(nodes[i].x, nodes[i].y, [...nodes[i].rgb]);
+                        clone.vx = (Math.random() - 0.5) * 15; clone.vy = (Math.random() - 0.5) * 15;
+                        nodes.push(clone);
+                        draggingNode = null; return;
+                    }
+                    draggingNode = nodes[i];
+                    dragOffsetX = px - draggingNode.x; dragOffsetY = py - draggingNode.y;
+                    lastClickedNode = nodes[i]; lastClickTime = now; return;
+                }
+            }
+        }
+
+        function handlePointerMove(e) {
+            if (!draggingNode) return;
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX || (e.touches ? e.touches[0].clientX : 0)) - rect.left;
+            const py = (e.clientY || (e.touches ? e.touches[0].clientY : 0)) - rect.top;
+            draggingNode.x = Math.max(draggingNode.radius, Math.min(canvas.width - draggingNode.radius, px - dragOffsetX));
+            draggingNode.y = Math.max(draggingNode.radius, Math.min(canvas.height - draggingNode.radius, py - dragOffsetY));
+        }
+
+        function handlePointerUp() {
+            if (!draggingNode) return;
+            for (let n of nodes) {
+                if (n !== draggingNode && Math.hypot(n.x - draggingNode.x, n.y - draggingNode.y) < n.radius + draggingNode.radius) {
+                    const mixedRgb = [
+                        Math.round((draggingNode.rgb[0] + n.rgb[0]) / 2),
+                        Math.round((draggingNode.rgb[1] + n.rgb[1]) / 2),
+                        Math.round((draggingNode.rgb[2] + n.rgb[2]) / 2)
+                    ];
+                    const hex = rgbToHex(...mixedRgb);
+                    nodes = nodes.filter(node => node !== n && node !== draggingNode);
+                    nodes.push(new Node(n.x, n.y, mixedRgb));
+                    if (!discoveredColors.has(hex)) { 
+                        discoveredColors.set(hex, mixedRgb); 
+                        savePalette(); // SAVE TO STORAGE
+                        updateSidebar(); 
+                    }
+                    break;
+                }
+            }
+            draggingNode = null;
+        }
+
+        canvas.addEventListener('mousedown', handlePointerDown);
+        window.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('mouseup', handlePointerUp);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handlePointerDown(e); });
+        window.addEventListener('touchmove', handlePointerMove);
+        window.addEventListener('touchend', handlePointerUp);
+
+        function updateSidebar() {
+            colorList.innerHTML = "";
+            discoveredColors.forEach((rgb, hex) => {
+                const btn = document.createElement('div');
+                btn.className = 'color-btn';
+                btn.style.backgroundColor = hex;
+                btn.setAttribute('data-hex', hex);
+                btn.onclick = () => nodes.push(new Node(canvas.width/2, canvas.height/2, rgb));
+                colorList.appendChild(btn);
+            });
+            document.getElementById('counter').textContent = `Found: ${discoveredColors.size}`;
+        }
+
+        function loop() {
+            ctx.fillStyle = "rgba(15, 23, 42, 0.6)"; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => p.draw());
+            nodes.forEach(n => { n.update(); n.draw(); });
+            requestAnimationFrame(loop);
+        }
+
+        // Init
+        loadPalette();
+        seedColors.forEach((c, i) => nodes.push(new Node(100 + i*100, 100, c.rgb)));
+        updateSidebar();
+        loop();
+    </script>
+</body>
+</html>
