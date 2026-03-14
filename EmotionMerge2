@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chroma Psyche: Calm Drift</title>
+    <style>
+        :root {
+            --bg: #020617; --sidebar-bg: #0f172a; --text: #f8fafc;
+            --accent: #38bdf8; --border: #1e293b; --hover: #334155;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Inter', system-ui, sans-serif; background-color: var(--bg); color: var(--text);
+            display: flex; overflow: hidden; touch-action: none;
+        }
+        #game-container { flex: 1; position: relative; cursor: crosshair; }
+        canvas { display: block; width: 100%; height: 100%; }
+        #sidebar {
+            width: 320px; background-color: var(--sidebar-bg);
+            border-left: 2px solid var(--border); display: flex; flex-direction: column; z-index: 10;
+        }
+        #sidebar-header { padding: 20px; border-bottom: 2px solid var(--border); background: rgba(0,0,0,0.3); }
+        #sidebar-header h1 { margin: 0; font-size: 14px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; text-align: center; }
+        #sidebar-header p { font-size: 10px; color: #64748b; text-align: center; margin: 8px 0 0 0; }
+        #emotion-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
+        .emo-tag {
+            background: var(--border); padding: 5px 10px; border-radius: 4px;
+            cursor: pointer; font-size: 10px; font-weight: 800; transition: 0.2s;
+            border-bottom: 2px solid rgba(0,0,0,0.2); white-space: nowrap; text-transform: uppercase;
+            display: flex; align-items: center; gap: 4px;
+        }
+        .emo-tag.complete { opacity: 0.4; border-bottom: none; filter: saturate(0.5); }
+        .tick { color: #10b981; font-weight: bold; }
+        .emo-tag:hover { background: var(--hover); transform: scale(1.05); }
+        .controls { padding: 12px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+        button { flex: 1; background: #1e293b; border: 1px solid var(--border); color: #94a3b8; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; }
+        @media (max-width: 768px) { body { flex-direction: column; } #sidebar { width: 100%; height: 40%; } }
+    </style>
+</head>
+<body>
+    <div id="game-container"><canvas id="canvas"></canvas></div>
+    <div id="sidebar">
+        <div id="sidebar-header">
+            <h1>Chroma Psyche</h1>
+            <p id="stat-count">RECONSTRUCTING MIND...</p>
+        </div>
+        <div id="emotion-list"></div>
+        <div class="controls">
+            <button onclick="nodes = []">Clear Canvas</button>
+            <button onclick="resetLib()" style="color:#f87171">Reset Progress</button>
+        </div>
+    </div>
+
+<script>
+const emotionLib = {
+    "Joy": "#f59e0b", "Sadness": "#3b82f6", "Anger": "#ef4444", "Fear": "#06b6d4", "Trust": "#ec4899", "Disgust": "#84cc16", "Surprise": "#d946ef", "Anticipation": "#f97316", "Peace": "#10b981",
+    "Love": "#f43f5e", "Shock": "#701a75", "Contempt": "#78350f", "Awe": "#2dd4bf", "Aggression": "#b91c1c", "Optimism": "#fbbf24", "Remorse": "#475569", "Submission": "#818cf8", "Alarm": "#4338ca", "Despair": "#0f172a", "Pride": "#ea580c", "Hope": "#fde047", "Ecstasy": "#facc15", "Nostalgia": "#a78bfa", "Betrayal": "#991b1b", "Bittersweet": "#fb923c", "Jealousy": "#65a30d", "Curiosity": "#22d3ee", "Resignation": "#64748b", "Schadenfreude": "#581c87", "Serenity": "#ccfbf1", "Dread": "#1e1b4b", "Courage": "#dc2626",
+    "Melancholy": "#6366f1", "Apathy": "#475569", "Zen": "#f1f5f9", "Existential Dread": "#020617", "Compassion": "#fda4af", "Justice": "#fcd34d", "Paranoia": "#064e3b", "Hysteria": "#be123c", "Grief": "#1e3a8a", "Wonder": "#fdf4ff", "Ego": "#4c1d95", "Humility": "#a5f3fc", "Malice": "#450a0a", "Empathy": "#f9a8d4", "Solitude": "#1e293b", "Loneliness": "#1d4ed8", "Anxiety": "#fbbf24", "Relief": "#6ee7b7", "Skepticism": "#94a3b8", "Hatred": "#7f1d1d", "Forgiveness": "#dcfce7", "Enlightenment": "#ffffff", "Ennui": "#94a3b8", "Vengeance": "#991b1b", "Ambition": "#fbbf24", "Burnout": "#4b5563", "Infatuation": "#f472b6", "Obsession": "#be123c", "Wisdom": "#1e40af", "Cynicism": "#334155", "Altruism": "#2dd4bf", "Nirvana": "#fff7ed", "Catatonia": "#0f172a", "Fanaticism": "#b91c1c", "Sacrifice": "#f43f5e", "Bitterness": "#3f6212", "Harmony": "#86efac", "Tyranny": "#450a0a", "Anarchy": "#ef4444", "Utopia": "#2dd4bf", "Dystopia": "#1e1b4b", "The Hero": "#f59e0b", "The Martyr": "#be123c", "The Sage": "#f1f5f9", "The Fool": "#d946ef", "Entropy": "#020617", "Singularity": "#ffffff", "Agape": "#fda4af", "Stoicism": "#1e293b", "Nihilism": "#000000", "Absurdism": "#f472b6", "Grit": "#78350f", "Grace": "#ccfbf1", "Terror": "#7f1d1d", "Mercy": "#dcfce7", "Solace": "#3b82f6", "Trauma": "#4c1d95", "Devotion": "#f472b6", "Boredom": "#64748b", "Restlessness": "#f97316", "Fury": "#7f1d1d",
+    "Lust": "#e11d48", "Gluttony": "#b45309", "Greed": "#ca8a04", "Sloth": "#334155", "Wrath": "#7f1d1d", "Envy": "#166534", "Chastity": "#f0fdfa", "Temperance": "#8b5cf6", "Charity": "#10b981", "Diligence": "#3b82f6", "Patience": "#a7f3d0", "Kindness": "#f472b6", "Spite": "#831843", "Guilt": "#3f3f46", "Shame": "#27272a", "Phobia": "#1e3a8a", "Superstition": "#5b21b6", "Bliss": "#fdf4ff", "Agony": "#450a0a", "Tension": "#ea580c", "Catharsis": "#38bdf8", "Epiphany": "#fde047", "Amnesia": "#cbd5e1", "Frenzy": "#dc2626", "Megalomania": "#4c1d95", "Delirium": "#d946ef", "Disappointment": "#64748b", "Frustration": "#c2410c", "Lethargy": "#94a3b8", "Self-Loathing": "#18181b", "Faith": "#fbcfe8"
+};
+
+const RECIPES = {
+    "Fear+Surprise": "Alarm", "Trust+Surprise": "Awe", "Joy+Trust": "Love", "Anger+Anticipation": "Aggression", "Joy+Anticipation": "Optimism", "Sadness+Disgust": "Remorse", "Fear+Trust": "Submission", "Sadness+Fear": "Despair", "Anger+Disgust": "Contempt", "Peace+Anticipation": "Hope", "Joy+Joy": "Ecstasy", "Joy+Sadness": "Bittersweet", "Sadness+Anticipation": "Nostalgia", "Anger+Trust": "Betrayal", "Anger+Sadness": "Jealousy", "Surprise+Anticipation": "Curiosity", "Sadness+Peace": "Resignation", "Anger+Joy": "Schadenfreude", "Fear+Anticipation": "Dread", "Fear+Anger": "Courage", "Peace+Joy": "Serenity", "Sadness+Sadness": "Grief",
+    "Jealousy+Anger": "Vengeance", "Resignation+Sadness": "Apathy", "Apathy+Anticipation": "Ennui", "Dread+Surprise": "Existential Dread", "Love+Peace": "Compassion", "Contempt+Anger": "Justice", "Dread+Trust": "Paranoia", "Alarm+Fear": "Hysteria", "Serenity+Awe": "Zen", "Surprise+Peace": "Wonder", "Bittersweet+Nostalgia": "Melancholy", "Love+Trust": "Empathy", "Empathy+Sadness": "Compassion", "Anger+Contempt": "Hatred", "Hatred+Anticipation": "Malice", "Pride+Anger": "Ego", "Ego+Peace": "Humility", "Humility+Trust": "Forgiveness", "Peace+Sadness": "Solitude", "Solitude+Fear": "Loneliness", "Loneliness+Anticipation": "Anxiety", "Fear+Joy": "Relief", "Surprise+Disgust": "Skepticism", "Skepticism+Curiosity": "Wonder", "Zen+Wonder": "Enlightenment", "Schadenfreude+Ego": "Malice", "Grief+Vengeance": "Hatred", "Ego+Anticipation": "Ambition", "Justice+Trust": "Order", "Aggression+Surprise": "Chaos", "Order+Chaos": "Nihilism", "Fanaticism+Anger": "Hatred", "Compassion+Love": "Altruism", "Altruism+Peace": "Sacrifice", "Enlightenment+Peace": "Nirvana", "Despair+Apathy": "Catatonia", "Skepticism+Anger": "Cynicism", "Justice+Forgiveness": "Harmony", "Love+Anticipation": "Infatuation", "Infatuation+Ego": "Obsession", "Obsession+Trust": "Devotion", "Courage+Sacrifice": "The Hero", "Sacrifice+Grief": "The Martyr", "The Hero+Wisdom": "The Sage", "Curiosity+Joy": "The Fool", "Order+Fanaticism": "Tyranny", "Chaos+Anger": "Anarchy", "Harmony+Justice": "Utopia", "Tyranny+Fear": "Dystopia", "Dystopia+Hope": "The Hero", "Nihilism+Joy": "Absurdism", "Stoicism+Grit": "Wisdom", "Courage+Fear": "Grit", "Peace+Submission": "Stoicism", "Wisdom+Altruism": "Grace", "Grace+Forgiveness": "Mercy", "Mercy+Grief": "Solace", "Entropy+Enlightenment": "Singularity", "Love+Altruism": "Agape", "Agape+Zen": "Nirvana", "Nirvana+Singularity": "Peace", "Hatred+Malice": "Terror", "Terror+Hysteria": "Chaos", "Bittersweet+Grief": "Melancholy", "Anticipation+Peace": "Boredom", "Boredom+Anticipation": "Restlessness", "Anger+Anger": "Fury", "Fear+Fear": "Trauma", "Trauma+Grief": "Catatonia", 
+    "Joy+Fear": "Tension", "Disgust+Fear": "Phobia", "Trust+Anticipation": "Faith", "Faith+Fear": "Superstition", "Faith+Joy": "Bliss", "Joy+Disgust": "Spite", "Surprise+Sadness": "Disappointment", "Disappointment+Anger": "Frustration", "Frustration+Sadness": "Lethargy", "Disgust+Disgust": "Self-Loathing", "Self-Loathing+Sadness": "Guilt", "Guilt+Fear": "Shame", "Despair+Fear": "Agony", "Agony+Peace": "Catharsis", "Wonder+Surprise": "Epiphany", "Trauma+Peace": "Amnesia", "Surprise+Anger": "Frenzy", "Ego+Pride": "Megalomania", "Hysteria+Confusion": "Delirium", 
+    "Obsession+Anticipation": "Lust", "Joy+Greed": "Gluttony", "Anticipation+Joy": "Greed", "Ennui+Sadness": "Sloth", "Shame+Anger": "Wrath", "Jealousy+Sadness": "Envy", "Humility+Disgust": "Chastity", "Peace+Disgust": "Temperance", "Altruism+Empathy": "Charity", "Ambition+Peace": "Diligence", "Hope+Resignation": "Patience", "Compassion+Joy": "Kindness"
+};
+
+let nodes = [];
+let particles = [];
+let discovered = new Set(["Joy", "Sadness", "Anger", "Fear", "Trust", "Anticipation", "Peace", "Disgust", "Surprise"]);
+let draggingNode = null;
+let offset = { x: 0, y: 0 };
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const listUI = document.getElementById('emotion-list');
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y; this.color = color;
+        this.vx = (Math.random() - 0.5) * 8;
+        this.vy = (Math.random() - 0.5) * 8;
+        this.life = 1.0;
+    }
+    draw() {
+        this.x += this.vx; this.y += this.vy; this.life -= 0.025;
+        ctx.globalAlpha = Math.max(0, this.life);
+        ctx.fillStyle = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+function createBurst(x, y, color) {
+    for (let i = 0; i < 30; i++) particles.push(new Particle(x, y, color));
+}
+
+function isComplete(name) {
+    for (const [recipe, result] of Object.entries(RECIPES)) {
+        if (recipe.split('+').includes(name) && !discovered.has(result)) return false;
+    }
+    return true;
+}
+
+function updateSidebar() {
+    listUI.innerHTML = "";
+    Array.from(discovered).sort().forEach(name => {
+        const div = document.createElement('div');
+        const done = isComplete(name);
+        div.className = `emo-tag ${done ? 'complete' : ''}`;
+        div.style.backgroundColor = emotionLib[name];
+        div.style.color = (parseInt(emotionLib[name].replace('#',''), 16) > 0xffffff/2) ? 'black' : 'white';
+        div.innerHTML = `<span>${name}</span>${done ? '<span class="tick">✔</span>' : ''}`;
+        div.onclick = () => spawn(name);
+        listUI.appendChild(div);
+    });
+    document.getElementById('stat-count').innerText = `${discovered.size} PATHS MAPPED`;
+}
+
+class Node {
+    constructor(x, y, name, radius = 42) {
+        this.x = x; this.y = y; this.name = name;
+        this.color = emotionLib[name] || "#94a3b8";
+        this.radius = radius; this.vx = 0; this.vy = 0;
+    }
+    update() {
+        if (this === draggingNode) return;
+        
+        // 1. Weak Center Attraction (Only if far away)
+        const dx = canvas.width / 2 - this.x;
+        const dy = canvas.height / 2 - this.y;
+        const distToCenter = Math.hypot(dx, dy);
+        if (distToCenter > 100) {
+            this.vx += dx * 0.00001;
+            this.vy += dy * 0.00001;
+        }
+        
+        // 2. Reduced Brownian Motion (Calmer jitter)
+        this.vx += (Math.random() - 0.5) * 0.05;
+        this.vy += (Math.random() - 0.5) * 0.05;
+        
+        // 3. Higher Drag (Slower movement)
+        this.vx *= 0.95; this.vy *= 0.95;
+        this.x += this.vx; this.y += this.vy;
+
+        // 4. Soft Wall Bouncing
+        if (this.x < this.radius) { this.x = this.radius; this.vx *= -0.3; }
+        if (this.x > canvas.width - this.radius) { this.x = canvas.width - this.radius; this.vx *= -0.3; }
+        if (this.y < this.radius) { this.y = this.radius; this.vy *= -0.3; }
+        if (this.y > canvas.height - this.radius) { this.y = canvas.height - this.radius; this.vy *= -0.3; }
+    }
+    draw() {
+        ctx.save();
+        ctx.shadowColor = this.color; ctx.shadowBlur = 15;
+        
+        if (draggingNode && draggingNode !== this) {
+            const key = [this.name, draggingNode.name].sort().join('+');
+            if (RECIPES[key]) {
+                ctx.shadowBlur = 35;
+                ctx.strokeStyle = "rgba(255,255,255,0.7)";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+
+        ctx.fillStyle = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill();
+        
+        ctx.fillStyle = "white"; ctx.textAlign = "center"; ctx.font = "bold 9px Inter, sans-serif";
+        ctx.fillText(this.name.toUpperCase(), this.x, this.y + 3);
+        ctx.restore();
+    }
+}
+
+function spawn(name, x, y, r = 42) {
+    nodes.push(new Node(x || canvas.width/2 + (Math.random()*60-30), y || canvas.height/2 + (Math.random()*60-30), name, r));
+}
+
+function handlePointerDown(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || (e.touches ? e.touches[0].clientX : 0)) - rect.left;
+    const y = (e.clientY || (e.touches ? e.touches[0].clientY : 0)) - rect.top;
+    for (let i = nodes.length - 1; i >= 0; i--) {
+        if (Math.hypot(x - nodes[i].x, y - nodes[i].y) < nodes[i].radius) {
+            draggingNode = nodes[i];
+            offset.x = x - draggingNode.x; offset.y = y - draggingNode.y;
+            draggingNode.vx = 0; draggingNode.vy = 0; // Stop it instantly when grabbed
+            return;
+        }
+    }
+}
+
+function handlePointerMove(e) {
+    if (!draggingNode) return;
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX || (e.touches ? e.touches[0].clientX : 0)) - r.left;
+    const y = (e.clientY || (e.touches ? e.touches[0].clientY : 0)) - r.top;
+    draggingNode.x = x - offset.x;
+    draggingNode.y = y - offset.y;
+}
+
+function handlePointerUp() {
+    if (!draggingNode) return;
+    for (let n of nodes) {
+        if (n !== draggingNode && Math.hypot(n.x - draggingNode.x, n.y - draggingNode.y) < (n.radius + draggingNode.radius)) {
+            const key = [n.name, draggingNode.name].sort().join('+');
+            const result = RECIPES[key];
+            if (result) {
+                const isNew = !discovered.has(result);
+                const mx = (n.x + draggingNode.x) / 2; const my = (n.y + draggingNode.y) / 2;
+                nodes.splice(nodes.indexOf(n), 1); nodes.splice(nodes.indexOf(draggingNode), 1);
+                spawn(result, mx, my, 48);
+                if (isNew) {
+                    discovered.add(result); createBurst(mx, my, emotionLib[result]);
+                    updateSidebar(); localStorage.setItem('psyche_v8_calm', JSON.stringify(Array.from(discovered)));
+                }
+                draggingNode = null; return;
+            }
+        }
+    }
+    draggingNode = null;
+}
+
+function loop() {
+    ctx.fillStyle = "rgba(2, 6, 23, 0.4)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Process collisions (Soft repelling)
+    for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+            const n1 = nodes[i]; const n2 = nodes[j];
+            const dx = n2.x - n1.x; const dy = n2.y - n1.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = n1.radius + n2.radius + 5;
+            if (dist < minDist) {
+                const angle = Math.atan2(dy, dx);
+                const force = (minDist - dist) * 0.02;
+                n1.vx -= Math.cos(angle) * force; n1.vy -= Math.sin(angle) * force;
+                n2.vx += Math.cos(angle) * force; n2.vy += Math.sin(angle) * force;
+            }
+        }
+    }
+
+    particles = particles.filter(p => p.life > 0); 
+    particles.forEach(p => p.draw());
+    nodes.forEach(n => { n.update(); n.draw(); });
+    requestAnimationFrame(loop);
+}
+
+canvas.addEventListener('mousedown', handlePointerDown); window.addEventListener('mousemove', handlePointerMove); window.addEventListener('mouseup', handlePointerUp);
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handlePointerDown(e); }, {passive: false});
+window.addEventListener('touchmove', (e) => { e.preventDefault(); handlePointerMove(e); }, {passive: false});
+window.addEventListener('touchend', handlePointerUp);
+window.addEventListener('resize', () => { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; });
+
+canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight;
+const data = localStorage.getItem('psyche_v8_calm'); if(data) discovered = new Set(JSON.parse(data));
+updateSidebar(); loop();
+
+function resetLib() { if(confirm("Reset progress?")) { localStorage.clear(); location.reload(); } }
+</script>
+</body>
+</html>
