@@ -1,0 +1,1762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chroma Psyche: Calm Drift</title>
+<style>
+:root {
+    --bg: #020617; --sidebar-bg: #0f172a; --text: #f8fafc;
+    --accent: #38bdf8; --border: #1e293b; --hover: #334155;
+}
+body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    font-family: 'Inter', system-ui, sans-serif; background-color: var(--bg); color: var(--text);
+    display: flex; overflow: hidden; touch-action: none;
+}
+#game-container { flex: 1; position: relative; cursor: crosshair; }
+canvas { display: block; width: 100%; height: 100%; }
+#sidebar {
+    width: 320px; background-color: var(--sidebar-bg);
+    border-left: 2px solid var(--border); display: flex; flex-direction: column; z-index: 10;
+}
+#sidebar-header { padding: 20px; border-bottom: 2px solid var(--border); background: rgba(0,0,0,0.3); }
+#sidebar-header h1 { margin: 0; font-size: 14px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; text-align: center; }
+#sidebar-header p { font-size: 10px; color: #64748b; text-align: center; margin: 8px 0 0 0; }
+#emotion-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
+.emo-tag {
+    background: var(--border); padding: 5px 10px; border-radius: 4px;
+    cursor: pointer; font-size: 10px; font-weight: 800; transition: 0.2s;
+    border-bottom: 2px solid rgba(0,0,0,0.2); white-space: nowrap; text-transform: uppercase;
+    display: flex; align-items: center; gap: 4px;
+}
+.emo-tag.complete { opacity: 0.4; border-bottom: none; filter: saturate(0.5); }
+.tick { color: #10b981; font-weight: bold; }
+.emo-tag:hover { background: var(--hover); transform: scale(1.05); }
+.controls { padding: 12px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+button { flex: 1; background: #1e293b; border: 1px solid var(--border); color: #94a3b8; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; }
+@media (max-width: 768px) { body { flex-direction: column; } #sidebar { width: 100%; height: 40%; } }
+</style>
+</head>
+<body>
+<div id="game-container"><canvas id="canvas"></canvas></div>
+<div id="sidebar">
+    <div id="sidebar-header">
+        <h1>Chroma Psyche</h1>
+        <p id="stat-count">RECONSTRUCTING MIND...</p>
+    </div>
+    <div id="emotion-list"></div>
+    <div class="controls">
+        <button onclick="nodes = []">Clear Canvas</button>
+        <button onclick="resetLib()" style="color:#f87171">Reset Progress</button>
+    </div>
+</div>
+
+<script>
+const emotionLib = {
+    "Joy": "#f59e0b", "Sadness": "#3b82f6", "Anger": "#ef4444", "Fear": "#06b6d4",
+    "Trust": "#ec4899", "Disgust": "#84cc16", "Surprise": "#d946ef", "Anticipation": "#f97316",
+    "Peace": "#10b981"
+};
+
+const RECIPES = {
+    "Joy+Joy": "Ecstasy",
+    "Joy+Sadness": "Melancholy",
+    "Joy+Anger": "Pride",
+    "Joy+Fear": "Tension",
+    "Joy+Trust": "Love",
+    "Joy+Disgust": "Spite",
+    "Joy+Surprise": "Curiosity",
+    "Joy+Anticipation": "Optimism",
+    "Joy+Peace": "Serenity",
+    "Joy+Love": "Infatuation",
+    "Joy+Shock": "Epiphany",
+    "Joy+Contempt": "Fury",
+    "Joy+Awe": "Wonder",
+    "Joy+Aggression": "Courage",
+    "Joy+Optimism": "Bliss",
+    "Joy+Remorse": "Compassion",
+    "Joy+Submission": "Faith",
+    "Joy+Alarm": "Catharsis",
+    "Joy+Despair": "Guilt",
+    "Joy+Pride": "Ambition",
+    "Joy+Hope": "Relief",
+    "Joy+Ecstasy": "Joy",
+    "Joy+Nostalgia": "Bittersweet",
+    "Joy+Betrayal": "Obsession",
+    "Joy+Bittersweet": "Melancholy",
+    "Joy+Jealousy": "Envy",
+    "Joy+Curiosity": "The Fool",
+    "Joy+Resignation": "Ennui",
+    "Joy+Schadenfreude": "Malice",
+    "Joy+Serenity": "Zen",
+    "Joy+Dread": "Fear",
+    "Joy+Courage": "Grit",
+    "Joy+Melancholy": "Melancholy",
+    "Joy+Apathy": "Sloth",
+    "Joy+Zen": "Bliss",
+    "Joy+Existential Dread": "Nihilism",
+    "Joy+Compassion": "Kindness",
+    "Joy+Justice": "Honor",
+    "Joy+Paranoia": "Skepticism",
+    "Joy+Hysteria": "Frenzy",
+    "Joy+Grief": "Solace",
+    "Joy+Wonder": "Curiosity",
+    "Joy+Ego": "Pride",
+    "Joy+Humility": "Forgiveness",
+    "Joy+Malice": "Wrath",
+    "Joy+Empathy": "Kindness",
+    "Joy+Solitude": "Peace",
+    "Joy+Loneliness": "Anxiety",
+    "Joy+Anxiety": "Tension",
+    "Joy+Relief": "Bliss",
+    "Joy+Skepticism": "Curiosity",
+    "Joy+Hatred": "Fury",
+    "Joy+Forgiveness": "Mercy",
+    "Joy+Enlightenment": "Zen",
+    "Joy+Ennui": "Boredom",
+    "Joy+Vengeance": "Rage",
+    "Joy+Ambition": "Optimism",
+    "Joy+Burnout": "Lethargy",
+    "Joy+Infatuation": "Obsession",
+    "Joy+Obsession": "Devotion",
+    "Joy+Wisdom": "Grace",
+    "Joy+Cynicism": "Skepticism",
+    "Joy+Altruism": "Charity",
+    "Joy+Nirvana": "Peace",
+    "Joy+Catatonia": "Apathy",
+    "Joy+Fanaticism": "Frenzy",
+    "Joy+Sacrifice": "The Martyr",
+    "Joy+Bitterness": "Resentment",
+    "Joy+Harmony": "Serenity",
+    "Joy+Tyranny": "Anger",
+    "Joy+Anarchy": "Chaos",
+    "Joy+Utopia": "Hope",
+    "Joy+Dystopia": "Despair",
+    "Joy+The Hero": "Courage",
+    "Joy+The Martyr": "Sacrifice",
+    "Joy+The Sage": "Wisdom",
+    "Joy+The Fool": "Curiosity",
+    "Joy+Entropy": "Chaos",
+    "Joy+Singularity": "Enlightenment",
+    "Joy+Agape": "Love",
+    "Joy+Stoicism": "Patience",
+    "Joy+Nihilism": "Absurdism",
+    "Joy+Absurdism": "Confusion",
+    "Joy+Grit": "Courage",
+    "Joy+Grace": "Mercy",
+    "Joy+Terror": "Fear",
+    "Joy+Mercy": "Compassion",
+    "Joy+Solace": "Relief",
+    "Joy+Trauma": "Fear",
+    "Joy+Devotion": "Faith",
+    "Joy+Boredom": "Restlessness",
+    "Joy+Restlessness": "Frustration",
+    "Joy+Fury": "Rage",
+    "Joy+Lust": "Infatuation",
+    "Joy+Gluttony": "Greed",
+    "Joy+Greed": "Ambition",
+    "Joy+Sloth": "Apathy",
+    "Joy+Wrath": "Anger",
+    "Joy+Envy": "Jealousy",
+    "Joy+Chastity": "Purity",
+    "Joy+Temperance": "Balance",
+    "Joy+Charity": "Kindness",
+    "Joy+Diligence": "Patience",
+    "Joy+Patience": "Calm",
+    "Joy+Kindness": "Empathy",
+    "Joy+Spite": "Fury",
+    "Joy+Guilt": "Remorse",
+    "Joy+Shame": "Embarrassment",
+    "Joy+Phobia": "Fear",
+    "Joy+Superstition": "Skepticism",
+    "Joy+Bliss": "Ecstasy",
+    "Joy+Agony": "Pain",
+    "Joy+Tension": "Anxiety",
+    "Joy+Catharsis": "Relief",
+    "Joy+Epiphany": "Enlightenment",
+    "Joy+Amnesia": "Forgetfulness",
+    "Joy+Frenzy": "Chaos",
+    "Joy+Megalomania": "Ego",
+    "Joy+Delirium": "Confusion",
+    "Joy+Faith": "Trust",
+    "Joy+Self-Loathing": "Guilt",
+    "Sadness+Sadness": "Grief",
+    "Sadness+Joy": "Melancholy",
+    "Sadness+Anger": "Envy",
+    "Sadness+Fear": "Despair",
+    "Sadness+Trust": ["Submission","Acceptance"],
+    "Sadness+Disgust": "Remorse",
+    "Sadness+Surprise": "Disappointment",
+    "Sadness+Anticipation": "Nostalgia",
+    "Sadness+Peace": ["Solitude","Resignation"],
+    "Sadness+Love": "Compassion",
+    "Sadness+Shock": ["Hysteria","Trauma"],
+    "Sadness+Contempt": ["Regret","Bitter"],
+    "Sadness+Awe": ["Wonder","Astonishment"],
+    "Sadness+Aggression": "Bitterness",
+    "Sadness+Optimism": ["Hope","Wistfulness"],
+    "Sadness+Remorse": "Guilt",
+    "Sadness+Submission": ["Resignation","Acceptance"],
+    "Sadness+Alarm": ["Agony","Worry"],
+    "Sadness+Despair": ["Catatonia","Hopelessness"],
+    "Sadness+Pride": ["Shame","Regret"],
+    "Sadness+Hope": ["Relief","Melancholy"],
+    "Sadness+Ecstasy": "Bittersweet",
+    "Sadness+Nostalgia": ["Melancholy","Yearning"],
+    "Sadness+Betrayal": ["Vengeance","Hurt"],
+    "Sadness+Bittersweet": ["Melancholy","Poignancy"],
+    "Sadness+Jealousy": "Envy",
+    "Sadness+Curiosity": ["Wonder","Contemplation"],
+    "Sadness+Resignation": "Apathy",
+    "Sadness+Schadenfreude": ["Malice","Regret"],
+    "Sadness+Serenity": ["Peace","Solitude"],
+    "Sadness+Dread": ["Fear","Despair"],
+    "Sadness+Courage": ["Grit","Resolve"],
+    "Sadness+Melancholy": ["Grief","Sorrow"],
+    "Sadness+Apathy": ["Ennui","Numbness"],
+    "Sadness+Zen": ["Calm","Tranquility"],
+    "Sadness+Existential Dread": ["Nihilism","Depression"],
+    "Sadness+Compassion": "Empathy",
+    "Sadness+Justice": ["Harmony","Grief"],
+    "Sadness+Paranoia": ["Skepticism","Fear"],
+    "Sadness+Hysteria": ["Delirium","Distress"],
+    "Sadness+Grief": ["Grief","Sorrow"],
+    "Sadness+Wonder": ["Melancholy","Reflection"],
+    "Sadness+Ego": ["Pride","Bitterness"],
+    "Sadness+Humility": ["Forgiveness","Acceptance"],
+    "Sadness+Malice": ["Hatred","Bitterness"],
+    "Sadness+Empathy": "Compassion",
+    "Sadness+Solitude": "Loneliness",
+    "Sadness+Loneliness": ["Apathy","Desolation"],
+    "Sadness+Anxiety": ["Fear","Worry"],
+    "Sadness+Relief": ["Peace","Sadness"],
+    "Sadness+Skepticism": ["Cynicism","Doubt"],
+    "Sadness+Hatred": ["Wrath","Resentment"],
+    "Sadness+Forgiveness": ["Mercy","Acceptance"],
+    "Sadness+Enlightenment": ["Zen","Awareness"],
+    "Sadness+Ennui": ["Boredom","Apathy"],
+    "Sadness+Vengeance": ["Rage","Regret"],
+    "Sadness+Ambition": ["Hope","Hesitation"],
+    "Sadness+Burnout": "Exhaustion",
+    "Sadness+Infatuation": ["Obsession","Melancholy"],
+    "Sadness+Obsession": ["Devotion","Desperation"],
+    "Sadness+Wisdom": ["Grace","Reflection"],
+    "Sadness+Cynicism": ["Skepticism","Disillusionment"],
+    "Sadness+Altruism": ["Charity","Compassion"],
+    "Sadness+Nirvana": "Peace",
+    "Sadness+Catatonia": ["Apathy","Freeze"],
+    "Sadness+Fanaticism": ["Frenzy","Anguish"],
+    "Sadness+Sacrifice": ["Martyrdom","Grief"],
+    "Sadness+Bitterness": "Resentment",
+    "Sadness+Harmony": ["Balance","Solace"],
+    "Sadness+Tyranny": "Oppression",
+    "Sadness+Anarchy": "Chaos",
+    "Sadness+Utopia": "Hope",
+    "Sadness+Dystopia": "Despair",
+    "Sadness+The Hero": ["Courage","Resolve"],
+    "Sadness+The Martyr": "Sacrifice",
+    "Sadness+The Sage": "Wisdom",
+    "Sadness+The Fool": ["Curiosity","Confusion"],
+    "Sadness+Entropy": ["Chaos","Sadness"],
+    "Sadness+Singularity": ["Enlightenment","Awe"],
+    "Sadness+Agape": ["Love","Compassion"],
+    "Sadness+Stoicism": ["Patience","Calm"],
+    "Sadness+Nihilism": ["Absurdism","Hopelessness"],
+    "Sadness+Absurdism": ["Confusion","Existential Sigh"],
+    "Sadness+Grit": ["Courage","Resolve"],
+    "Sadness+Grace": ["Mercy","Compassion"],
+    "Sadness+Terror": "Fear",
+    "Sadness+Mercy": ["Compassion","Acceptance"],
+    "Sadness+Solace": ["Relief","Comfort"],
+    "Sadness+Trauma": ["Fear","PTSD"],
+    "Sadness+Devotion": "Faith",
+    "Sadness+Boredom": ["Restlessness","Listlessness"],
+    "Sadness+Restlessness": ["Frustration","Disquiet"],
+    "Sadness+Fury": ["Rage","Anger"],
+    "Sadness+Lust": ["Infatuation","Longing"],
+    "Sadness+Gluttony": ["Greed","Overindulgence"],
+    "Sadness+Greed": ["Ambition","Desire"],
+    "Sadness+Sloth": "Apathy",
+    "Sadness+Wrath": ["Anger","Resentment"],
+    "Sadness+Envy": "Jealousy",
+    "Sadness+Chastity": "Purity",
+    "Sadness+Temperance": ["Balance","Moderation"],
+    "Sadness+Charity": ["Kindness","Compassion"],
+    "Sadness+Diligence": ["Patience","Persistence"],
+    "Sadness+Patience": ["Calm","Endurance"],
+    "Sadness+Kindness": ["Empathy","Compassion"],
+    "Sadness+Spite": ["Fury","Resentment"],
+    "Sadness+Guilt": ["Remorse","Regret"],
+    "Sadness+Shame": "Embarrassment",
+    "Sadness+Phobia": "Fear",
+    "Sadness+Superstition": ["Skepticism","Doubt"],
+    "Sadness+Bliss": ["Ecstasy","Bittersweet"],
+    "Sadness+Agony": "Pain",
+    "Sadness+Tension": ["Anxiety","Worry"],
+    "Sadness+Catharsis": "Relief",
+    "Sadness+Epiphany": ["Enlightenment","Insight"],
+    "Sadness+Amnesia": "Forgetfulness",
+    "Sadness+Frenzy": ["Chaos","Distress"],
+    "Sadness+Megalomania": ["Ego","Obsession"],
+    "Sadness+Delirium": "Confusion",
+    "Sadness+Faith": ["Trust","Hope"],
+    "Sadness+Self-Loathing": ["Guilt","Remorse"],
+    "Anger+Joy": ["Pride","Schadenfreude"],
+    "Anger+Sadness": "Envy",
+    "Anger+Anger": "Rage",
+    "Anger+Fear": ["Aggression","Courage"],
+    "Anger+Trust": "Betrayal",
+    "Anger+Disgust": "Contempt",
+    "Anger+Surprise": "Frenzy",
+    "Anger+Anticipation": "Aggression",
+    "Anger+Peace": ["Defiance","Composure"],
+    "Anger+Love": "Obsession",
+    "Anger+Shock": ["Fury","Outrage"],
+    "Anger+Contempt": ["Wrath","Hatred"],
+    "Anger+Awe": ["Aggression","Defiance"],
+    "Anger+Optimism": ["Ambition","Determination"],
+    "Anger+Remorse": ["Hatred","Regret"],
+    "Anger+Submission": ["Defiance","Resistance"],
+    "Anger+Alarm": "Fury",
+    "Anger+Despair": "Vengeance",
+    "Anger+Pride": "Ego",
+    "Anger+Hope": ["Rebellion","Motivation"],
+    "Anger+Ecstasy": ["Fury","Frenzied Joy"],
+    "Anger+Nostalgia": "Resentment",
+    "Anger+Betrayal": ["Hatred","Rage"],
+    "Anger+Bittersweet": ["Malice","Frustration"],
+    "Anger+Jealousy": ["Vengeance","Spite"],
+    "Anger+Curiosity": ["Frenzy","Aggressive Curiosity"],
+    "Anger+Resignation": ["Cynicism","Defiance"],
+    "Anger+Schadenfreude": "Malice",
+    "Anger+Serenity": ["Defiance","Irritation"],
+    "Anger+Dread": ["Courage","Fierce Anxiety"],
+    "Anger+Courage": "Grit",
+    "Anger+Melancholy": "Frustration",
+    "Anger+Apathy": ["Wrath","Irritation"],
+    "Anger+Zen": ["Defiance","Restless Energy"],
+    "Anger+Existential Dread": ["Chaos","Rebellion"],
+    "Anger+Compassion": ["Conflict","Controlled Anger"],
+    "Anger+Justice": ["Righteousness","Righteous Anger"],
+    "Anger+Paranoia": "Suspicion",
+    "Anger+Hysteria": ["Frenzy","Mania"],
+    "Anger+Grief": ["Vengeance","Bitterness"],
+    "Anger+Wonder": ["Agitation","Irritation"],
+    "Anger+Ego": ["Ego","Hubris"],
+    "Anger+Humility": ["Defiance","Controlled Rage"],
+    "Anger+Malice": ["Wrath","Destruction"],
+    "Anger+Empathy": ["Conflict","Protective Anger"],
+    "Anger+Solitude": ["Frustration","Brooding"],
+    "Anger+Loneliness": ["Anger","Resentment"],
+    "Anger+Anxiety": ["Tension","Agitation"],
+    "Anger+Relief": ["Calm","Release"],
+    "Anger+Skepticism": "Cynicism",
+    "Anger+Hatred": ["Rage","Wrath"],
+    "Anger+Forgiveness": ["Conflict","Resolution"],
+    "Anger+Enlightenment": ["Resolve","Disciplined Anger"],
+    "Anger+Ennui": "Frustration",
+    "Anger+Vengeance": ["Rage","Revenge"],
+    "Anger+Ambition": "Drive",
+    "Anger+Burnout": "Exhaustion",
+    "Anger+Infatuation": "Obsession",
+    "Anger+Obsession": ["Fury","Frenzy"],
+    "Anger+Wisdom": ["Discernment","Strategic Anger"],
+    "Anger+Cynicism": ["Skepticism","Resentment"],
+    "Anger+Altruism": ["Justice","Protective Rage"],
+    "Anger+Nirvana": ["Defiance","Controlled Fury"],
+    "Anger+Catatonia": ["Apathy","Suppressed Rage"],
+    "Anger+Fanaticism": ["Frenzy","Extreme Rage"],
+    "Anger+Sacrifice": ["Righteousness","Righteous Fury"],
+    "Anger+Bitterness": "Resentment",
+    "Anger+Harmony": "Conflict",
+    "Anger+Tyranny": "Domination",
+    "Anger+Anarchy": ["Chaos","Rebellion"],
+    "Anger+Utopia": ["Order","Resistance"],
+    "Anger+Dystopia": ["Oppression","Rage"],
+    "Anger+The Hero": ["Courage","Fierce Courage"],
+    "Anger+The Martyr": ["Sacrifice","Martyrdom"],
+    "Anger+The Sage": ["Wisdom","Strategic Wrath"],
+    "Anger+The Fool": ["Rebellion","Impulsive Rage"],
+    "Anger+Entropy": ["Chaos","Destruction"],
+    "Anger+Singularity": ["Power","Obsession"],
+    "Anger+Agape": ["Conflict","Protective Love"],
+    "Anger+Stoicism": ["Patience","Controlled Anger"],
+    "Anger+Nihilism": ["Rage","Destructive Rage"],
+    "Anger+Absurdism": ["Chaos","Irritation"],
+    "Anger+Grit": ["Strength","Determination"],
+    "Anger+Grace": ["Mercy","Controlled Fury"],
+    "Anger+Terror": ["Fear","Panic Rage"],
+    "Anger+Mercy": ["Conflict","Restrained Wrath"],
+    "Anger+Solace": ["Relief","Anger Release"],
+    "Anger+Trauma": ["Rage","Vengeful Rage"],
+    "Anger+Devotion": ["Obsession","Passionate Drive"],
+    "Anger+Boredom": ["Frustration","Irritation"],
+    "Anger+Restlessness": ["Agitation","Fury"],
+    "Anger+Fury": ["Rage","Rampage"],
+    "Anger+Lust": ["Obsession","Desire-Fueled Anger"],
+    "Anger+Gluttony": ["Greed","Greedy Rage"],
+    "Anger+Greed": ["Ambition","Covetous Anger"],
+    "Anger+Sloth": ["Lethargy","Frustration"],
+    "Anger+Wrath": ["Rage","Rampage"],
+    "Anger+Envy": ["Jealousy","Resentment"],
+    "Anger+Chastity": ["Defiance","Suppressed Desire"],
+    "Anger+Temperance": ["Balance","Controlled Rage"],
+    "Anger+Charity": ["Conflict","Protective Wrath"],
+    "Anger+Diligence": ["Patience","Driven Anger"],
+    "Anger+Patience": ["Control","Steady Fury"],
+    "Anger+Kindness": ["Mercy","Defensive Rage"],
+    "Anger+Spite": ["Rage","Malice"],
+    "Anger+Guilt": ["Remorse","Remorseful Anger"],
+    "Anger+Shame": ["Embarrassment","Humiliated Rage"],
+    "Anger+Phobia": ["Fear","Fearful Rage"],
+    "Anger+Superstition": ["Cynicism","Suspicious Rage"],
+    "Anger+Bliss": ["Ecstasy","Excited Rage"],
+    "Anger+Agony": ["Pain","Tormented Rage"],
+    "Anger+Tension": ["Anxiety","Frustration"],
+    "Anger+Catharsis": ["Relief","Release"],
+    "Anger+Epiphany": ["Awakening","Angry Insight"],
+    "Anger+Amnesia": ["Forgetfulness","Forgotten Rage"],
+    "Anger+Frenzy": ["Chaos","Rampage"],
+    "Anger+Megalomania": ["Ego","Domination"],
+    "Anger+Delirium": ["Confusion","Chaotic Rage"],
+    "Anger+Faith": ["Trust","Fanatical Anger"],
+    "Anger+Self-Loathing": ["Guilt","Self-Directed Rage"],
+    "Fear+Joy": ["Relief","Tension"],
+    "Fear+Peace": ["Calm","Apprehension"],
+    "Fear+Anticipation": "Apprehension",
+    "Fear+Surprise": "Alarm",
+    "Fear+Sadness": "Grief",
+    "Fear+Anger": "Courage",
+    "Fear+Fear": "Trauma",
+    "Fear+Trust": "Submission",
+    "Fear+Disgust": "Phobia",
+    "Fear+Shock": ["Panic","Terror"],
+    "Fear+Contempt": "Unease",
+    "Fear+Awe": ["Astonishment","Wonder"],
+    "Fear+Optimism": ["Nervous Hope","Anxiety"],
+    "Fear+Remorse": "Regret",
+    "Fear+Submission": ["Resignation","Paralysis"],
+    "Fear+Alarm": ["Hysteria","Panic"],
+    "Fear+Despair": "Dread",
+    "Fear+Pride": ["Anxious Ego","Apprehension"],
+    "Fear+Hope": ["Anxious Optimism","Caution"],
+    "Fear+Ecstasy": ["Tense Excitement","Anxiety"],
+    "Fear+Nostalgia": ["Wistful Anxiety","Melancholy"],
+    "Fear+Betrayal": ["Paranoia","Suspicion"],
+    "Fear+Bittersweet": ["Unease","Worry"],
+    "Fear+Jealousy": ["Suspiciousness","Insecurity"],
+    "Fear+Curiosity": ["Cautious Inquiry","Apprehension"],
+    "Fear+Resignation": ["Hopelessness","Helplessness"],
+    "Fear+Schadenfreude": ["Guilty Anxiety","Unease"],
+    "Fear+Serenity": ["Uneasy Calm","Trepidation"],
+    "Fear+Dread": ["Panic","Terror"],
+    "Fear+Melancholy": ["Despondence","Worry"],
+    "Fear+Apathy": ["Indifference","Numbness"],
+    "Fear+Zen": ["Uneasy Awareness","Caution"],
+    "Fear+Existential Dread": ["Terror","Paranoia"],
+    "Fear+Compassion": ["Protective Fear","Empathy"],
+    "Fear+Justice": ["Wary Justice","Caution"],
+    "Fear+Paranoia": ["Heightened Anxiety","Hysteria"],
+    "Fear+Hysteria": ["Chaos","Panic"],
+    "Fear+Grief": ["Sorrowful Fear","Despair"],
+    "Fear+Wonder": ["Apprehensive Curiosity","Awe"],
+    "Fear+Ego": ["Defensive Anxiety","Apprehension"],
+    "Fear+Humility": ["Submissive Fear","Submission"],
+    "Fear+Malice": ["Terrified Anticipation","Suspicion"],
+    "Fear+Empathy": ["Concerned Fear","Caution"],
+    "Fear+Solitude": ["Alone Anxiety","Isolation"],
+    "Fear+Loneliness": ["Vulnerable Fear","Anxiety"],
+    "Fear+Anxiety": "Panic",
+    "Fear+Relief": ["Release","Calm"],
+    "Fear+Skepticism": ["Wary Suspicion","Doubt"],
+    "Fear+Hatred": ["Fearful Rage","Fear"],
+    "Fear+Forgiveness": ["Cautious Acceptance","Apprehension"],
+    "Fear+Enlightenment": ["Anxious Clarity","Awareness"],
+    "Fear+Ennui": ["Nervous Indifference","Boredom"],
+    "Fear+Vengeance": ["Cautious Retribution","Caution"],
+    "Fear+Ambition": ["Fearful Drive","Hesitation"],
+    "Fear+Burnout": ["Overwhelmed","Exhaustion"],
+    "Fear+Infatuation": ["Nervous Attraction","Anxiety"],
+    "Fear+Obsession": ["Anxious Obsession","Paranoia"],
+    "Fear+Wisdom": ["Cautious Insight","Discernment"],
+    "Fear+Cynicism": ["Suspiciousness","Suspicion"],
+    "Fear+Altruism": ["Protective Anxiety","Empathy"],
+    "Fear+Nirvana": ["Uneasy Peace","Calm"],
+    "Fear+Catatonia": ["Paralyzed Fear","Freeze"],
+    "Fear+Fanaticism": ["Fearful Zeal","Panic"],
+    "Fear+Sacrifice": ["Apprehensive Duty","Caution"],
+    "Fear+Bitterness": ["Resentful Anxiety","Resentment"],
+    "Fear+Harmony": ["Uneasy Balance","Unease"],
+    "Fear+Tyranny": ["Oppressed Fear","Oppression"],
+    "Fear+Anarchy": ["Fearful Chaos","Chaos"],
+    "Fear+Utopia": ["Cautious Optimism","Hope"],
+    "Fear+Dystopia": "Dread",
+    "Fear+The Hero": ["Reluctant Courage","Bravery"],
+    "Fear+The Martyr": ["Fearful Sacrifice","Sacrifice"],
+    "Fear+The Sage": ["Cautious Wisdom","Wisdom"],
+    "Fear+The Fool": ["Nervous Risk","Apprehension"],
+    "Fear+Entropy": ["Anxious Disorder","Fear"],
+    "Fear+Singularity": ["Overwhelmed","Awe"],
+    "Fear+Agape": ["Protective Love","Empathy"],
+    "Fear+Stoicism": ["Calm Vigilance","Calm"],
+    "Fear+Nihilism": ["Hopelessness","Terror"],
+    "Fear+Absurdism": ["Uneasy Humor","Unease"],
+    "Fear+Grit": ["Brave Anxiety","Resolve"],
+    "Fear+Grace": ["Controlled Fear","Calm"],
+    "Fear+Terror": "Panic",
+    "Fear+Mercy": ["Fearful Compassion","Caution"],
+    "Fear+Solace": ["Uneasy Comfort","Relief"],
+    "Fear+Trauma": ["Haunted","PTSD"],
+    "Fear+Devotion": ["Anxious Loyalty","Submission"],
+    "Fear+Boredom": ["Restless Anxiety","Unease"],
+    "Fear+Restlessness": ["Agitation","Anxiety"],
+    "Fear+Fury": ["Irritable Fear","Agitation"],
+    "Fear+Lust": ["Fearful Desire","Anxiety"],
+    "Fear+Gluttony": ["Nervous Craving","Worry"],
+    "Fear+Greed": ["Cautious Desire","Anxiety"],
+    "Fear+Sloth": ["Apprehension","Numbness"],
+    "Fear+Wrath": ["Angry Fear","Aggression"],
+    "Fear+Envy": ["Suspicious Anxiety","Jealousy"],
+    "Fear+Chastity": ["Cautious Restraint","Caution"],
+    "Fear+Temperance": ["Measured Anxiety","Balance"],
+    "Fear+Charity": ["Protective Fear","Caution"],
+    "Fear+Diligence": ["Anxious Effort","Care"],
+    "Fear+Patience": ["Nervous Waiting","Caution"],
+    "Fear+Kindness": ["Cautious Care","Empathy"],
+    "Fear+Spite": ["Defensive Fear","Unease"],
+    "Fear+Guilt": ["Anxious Remorse","Remorse"],
+    "Fear+Shame": ["Self-Conscious Fear","Embarrassment"],
+    "Fear+Phobia": ["Intense Fear","Panic"],
+    "Fear+Superstition": ["Suspicious Belief","Doubt"],
+    "Fear+Bliss": ["Nervous Excitement","Tension"],
+    "Fear+Agony": ["Tormented Fear","Pain"],
+    "Fear+Tension": ["Apprehension","Anxiety"],
+    "Fear+Catharsis": ["Release","Relief"],
+    "Fear+Epiphany": ["Alarming Insight","Awakening"],
+    "Fear+Amnesia": ["Forgotten Fear","Forgetfulness"],
+    "Fear+Frenzy": "Panic",
+    "Fear+Megalomania": ["Overwhelmed Ambition","Paranoia"],
+    "Fear+Delirium": ["Chaotic Panic","Confusion"],
+    "Fear+Faith": ["Worried Belief","Trust"],
+    "Fear+Self-Loathing": ["Self-Directed Fear","Guilt"],
+    "Fear+Courage": "Bravery",
+    "Trust+Joy": "Love",
+    "Trust+Peace": "Harmony",
+    "Trust+Anticipation": "Faith",
+    "Trust+Surprise": "Awe",
+    "Trust+Sadness": "Acceptance",
+    "Trust+Fear": "Submission",
+    "Trust+Anger": "Forgiveness",
+    "Trust+Trust": "Reliance",
+    "Trust+Disgust": "Tolerance",
+    "Trust+Shock": "Alertness",
+    "Trust+Contempt": "Justice",
+    "Trust+Awe": "Admiration",
+    "Trust+Optimism": "Hope",
+    "Trust+Remorse": "Compassion",
+    "Trust+Submission": "Mutual Respect",
+    "Trust+Alarm": "Vigilance",
+    "Trust+Despair": "Encouragement",
+    "Trust+Pride": "Confidence",
+    "Trust+Hope": "Optimism",
+    "Trust+Ecstasy": "Bliss",
+    "Trust+Nostalgia": "Sentimentality",
+    "Trust+Betrayal": "Disillusionment",
+    "Trust+Bittersweet": "Appreciation",
+    "Trust+Jealousy": "Reassurance",
+    "Trust+Curiosity": "Exploration",
+    "Trust+Resignation": "Acceptance",
+    "Trust+Schadenfreude": "Understanding",
+    "Trust+Serenity": "Peace",
+    "Trust+Dread": "Caution",
+    "Trust+Courage": "Reliability",
+    "Trust+Melancholy": "Empathy",
+    "Trust+Apathy": "Encouragement",
+    "Trust+Zen": "Tranquility",
+    "Trust+Existential Dread": "Awareness",
+    "Trust+Compassion": "Altruism",
+    "Trust+Justice": "Integrity",
+    "Trust+Paranoia": "Wariness",
+    "Trust+Hysteria": "Calm",
+    "Trust+Grief": "Support",
+    "Trust+Wonder": "Inspiration",
+    "Trust+Ego": "Humility",
+    "Trust+Humility": "Respect",
+    "Trust+Malice": "Forgiveness",
+    "Trust+Empathy": "Altruism",
+    "Trust+Solitude": "Understanding",
+    "Trust+Loneliness": "Comfort",
+    "Trust+Anxiety": "Reassurance",
+    "Trust+Relief": "Peace",
+    "Trust+Skepticism": "Doubt",
+    "Trust+Hatred": "Tolerance",
+    "Trust+Forgiveness": "Acceptance",
+    "Trust+Enlightenment": "Insight",
+    "Trust+Ennui": "Motivation",
+    "Trust+Vengeance": "Justice",
+    "Trust+Ambition": "Guidance",
+    "Trust+Burnout": "Support",
+    "Trust+Infatuation": "Faith",
+    "Trust+Obsession": "Devotion",
+    "Trust+Wisdom": "Counsel",
+    "Trust+Cynicism": "Trust Restoration",
+    "Trust+Altruism": "Faith",
+    "Trust+Nirvana": "Peace",
+    "Trust+Catatonia": "Encouragement",
+    "Trust+Fanaticism": "Moderation",
+    "Trust+Sacrifice": "Devotion",
+    "Trust+Bitterness": "Healing",
+    "Trust+Harmony": "Stability",
+    "Trust+Tyranny": "Resistance",
+    "Trust+Anarchy": "Cooperation",
+    "Trust+Utopia": "Hope",
+    "Trust+Dystopia": "Restoration",
+    "Trust+The Hero": "Inspiration",
+    "Trust+The Martyr": "Faith",
+    "Trust+The Sage": "Guidance",
+    "Trust+The Fool": "Trusting Curiosity",
+    "Trust+Entropy": "Understanding",
+    "Trust+Singularity": "Awareness",
+    "Trust+Agape": "Love",
+    "Trust+Stoicism": "Calm Support",
+    "Trust+Nihilism": "Hope",
+    "Trust+Absurdism": "Compassion",
+    "Trust+Grit": "Reliability",
+    "Trust+Grace": "Compassion",
+    "Trust+Terror": "Caution",
+    "Trust+Mercy": "Forgiveness",
+    "Trust+Solace": "Comfort",
+    "Trust+Trauma": "Support",
+    "Trust+Devotion": "Faith",
+    "Trust+Boredom": "Patience",
+    "Trust+Restlessness": "Guidance",
+    "Trust+Fury": "Tolerance",
+    "Trust+Lust": "Faithful Desire",
+    "Trust+Gluttony": "Moderation",
+    "Trust+Greed": "Fairness",
+    "Trust+Sloth": "Encouragement",
+    "Trust+Wrath": "Temperance",
+    "Trust+Envy": "Acceptance",
+    "Trust+Chastity": "Faith",
+    "Trust+Temperance": "Balance",
+    "Trust+Charity": "Altruism",
+    "Trust+Diligence": "Support",
+    "Trust+Patience": "Endurance",
+    "Trust+Kindness": "Compassion",
+    "Trust+Spite": "Tolerance",
+    "Trust+Guilt": "Forgiveness",
+    "Trust+Shame": "Acceptance",
+    "Trust+Phobia": "Reassurance",
+    "Trust+Superstition": "Skepticism",
+    "Trust+Bliss": "Love",
+    "Trust+Agony": "Support",
+    "Trust+Tension": "Calm",
+    "Trust+Catharsis": "Relief",
+    "Trust+Epiphany": "Insight",
+    "Trust+Amnesia": "Remembered Faith",
+    "Trust+Frenzy": "Calm",
+    "Trust+Megalomania": "Guidance",
+    "Trust+Delirium": "Stability",
+    "Trust+Faith": "Confidence",
+    "Trust+Self-Loathing": "Support",
+    "Anticipation+Joy": "Excitement",
+    "Anticipation+Peace": "Hope",
+    "Anticipation+Anticipation": "Eagerness",
+    "Anticipation+Surprise": "Curiosity",
+    "Anticipation+Sadness": "Apprehension",
+    "Anticipation+Fear": "Worry",
+    "Anticipation+Anger": "Frustration",
+    "Anticipation+Trust": "Faith",
+    "Anticipation+Disgust": "Aversion",
+    "Anticipation+Shock": "Alertness",
+    "Anticipation+Contempt": "Disdain",
+    "Anticipation+Awe": "Inspiration",
+    "Anticipation+Optimism": "Confidence",
+    "Anticipation+Remorse": "Regret",
+    "Anticipation+Submission": "Compliance",
+    "Anticipation+Alarm": "Anxiety",
+    "Anticipation+Despair": "Hopelessness",
+    "Anticipation+Pride": "Ambition",
+    "Anticipation+Hope": "Optimism",
+    "Anticipation+Ecstasy": "Thrill",
+    "Anticipation+Nostalgia": "Longing",
+    "Anticipation+Betrayal": "Distrust",
+    "Anticipation+Bittersweet": "Expectation",
+    "Anticipation+Jealousy": "Envy",
+    "Anticipation+Curiosity": "Investigation",
+    "Anticipation+Resignation": "Acceptance",
+    "Anticipation+Schadenfreude": "Excitement",
+    "Anticipation+Serenity": "Calm Anticipation",
+    "Anticipation+Dread": "Fear",
+    "Anticipation+Courage": "Bravery",
+    "Anticipation+Melancholy": "Pensive",
+    "Anticipation+Apathy": "Motivation",
+    "Anticipation+Zen": "Focused Calm",
+    "Anticipation+Existential Dread": "Awareness",
+    "Anticipation+Compassion": "Empathy",
+    "Anticipation+Justice": "Fairness",
+    "Anticipation+Paranoia": "Suspicion",
+    "Anticipation+Hysteria": "Overwhelm",
+    "Anticipation+Grief": "Sorrow",
+    "Anticipation+Wonder": "Excitement",
+    "Anticipation+Ego": "Ambition",
+    "Anticipation+Humility": "Modesty",
+    "Anticipation+Malice": "Scheming",
+    "Anticipation+Empathy": "Concern",
+    "Anticipation+Solitude": "Reflection",
+    "Anticipation+Loneliness": "Yearning",
+    "Anticipation+Anxiety": "Worry",
+    "Anticipation+Relief": "Comfort",
+    "Anticipation+Skepticism": "Caution",
+    "Anticipation+Hatred": "Resentment",
+    "Anticipation+Forgiveness": "Hope",
+    "Anticipation+Enlightenment": "Insight",
+    "Anticipation+Ennui": "Impatience",
+    "Anticipation+Vengeance": "Planning",
+    "Anticipation+Ambition": "Drive",
+    "Anticipation+Burnout": "Exhaustion",
+    "Anticipation+Infatuation": "Desire",
+    "Anticipation+Obsession": "Focus",
+    "Anticipation+Wisdom": "Guidance",
+    "Anticipation+Cynicism": "Suspicion",
+    "Anticipation+Altruism": "Motivation",
+    "Anticipation+Nirvana": "Aspiration",
+    "Anticipation+Catatonia": "Stasis",
+    "Anticipation+Fanaticism": "Zeal",
+    "Anticipation+Sacrifice": "Dedication",
+    "Anticipation+Bitterness": "Resentment",
+    "Anticipation+Harmony": "Balance",
+    "Anticipation+Tyranny": "Resistance",
+    "Anticipation+Anarchy": "Chaos",
+    "Anticipation+Utopia": "Hope",
+    "Anticipation+Dystopia": "Fear",
+    "Anticipation+The Hero": "Resolve",
+    "Anticipation+The Martyr": "Selflessness",
+    "Anticipation+The Sage": "Wisdom",
+    "Anticipation+The Fool": "Curiosity",
+    "Anticipation+Entropy": "Uncertainty",
+    "Anticipation+Singularity": "Awareness",
+    "Anticipation+Agape": "Love",
+    "Anticipation+Stoicism": "Composure",
+    "Anticipation+Nihilism": "Challenge",
+    "Anticipation+Absurdism": "Amusement",
+    "Anticipation+Grit": "Perseverance",
+    "Anticipation+Grace": "Poise",
+    "Anticipation+Terror": "Alarm",
+    "Anticipation+Mercy": "Compassion",
+    "Anticipation+Solace": "Comfort",
+    "Anticipation+Trauma": "Vigilance",
+    "Anticipation+Devotion": "Dedication",
+    "Anticipation+Boredom": "Impatience",
+    "Anticipation+Restlessness": "Agitation",
+    "Anticipation+Fury": "Frustration",
+    "Anticipation+Lust": "Desire",
+    "Anticipation+Gluttony": "Overindulgence",
+    "Anticipation+Greed": "Covetousness",
+    "Anticipation+Sloth": "Procrastination",
+    "Anticipation+Wrath": "Anger",
+    "Anticipation+Envy": "Jealousy",
+    "Anticipation+Chastity": "Self-Control",
+    "Anticipation+Temperance": "Patience",
+    "Anticipation+Charity": "Generosity",
+    "Anticipation+Diligence": "Focus",
+    "Anticipation+Patience": "Endurance",
+    "Anticipation+Kindness": "Compassion",
+    "Anticipation+Spite": "Malice",
+    "Anticipation+Guilt": "Remorse",
+    "Anticipation+Shame": "Self-Consciousness",
+    "Anticipation+Phobia": "Fear",
+    "Anticipation+Superstition": "Caution",
+    "Anticipation+Bliss": "Joy",
+    "Anticipation+Agony": "Pain",
+    "Anticipation+Tension": "Nervousness",
+    "Anticipation+Catharsis": "Release",
+    "Anticipation+Epiphany": "Realization",
+    "Anticipation+Amnesia": "Forgetfulness",
+    "Anticipation+Frenzy": "Excitement",
+    "Anticipation+Megalomania": "Drive",
+    "Anticipation+Delirium": "Disorientation",
+    "Anticipation+Faith": "Belief",
+    "Anticipation+Self-Loathing": "Motivation",
+    "Peace+Joy": "Serenity",
+    "Peace+Peace": "Calm",
+    "Peace+Anticipation": "Hope",
+    "Peace+Surprise": "Wonder",
+    "Peace+Sadness": "Solitude",
+    "Peace+Fear": "Tranquility",
+    "Peace+Anger": "Composure",
+    "Peace+Trust": "Harmony",
+    "Peace+Disgust": "Acceptance",
+    "Peace+Shock": "Equanimity",
+    "Peace+Contempt": "Tolerance",
+    "Peace+Awe": "Reverence",
+    "Peace+Optimism": "Confidence",
+    "Peace+Remorse": "Forgiveness",
+    "Peace+Submission": "Surrender",
+    "Peace+Alarm": "Alert Calm",
+    "Peace+Despair": "Acceptance",
+    "Peace+Pride": "Dignity",
+    "Peace+Hope": "Aspiration",
+    "Peace+Ecstasy": "Bliss",
+    "Peace+Nostalgia": "Nostalgic Calm",
+    "Peace+Betrayal": "Understanding",
+    "Peace+Bittersweet": "Peaceful Reflection",
+    "Peace+Jealousy": "Compassion",
+    "Peace+Curiosity": "Mindful Observation",
+    "Peace+Resignation": "Acceptance",
+    "Peace+Schadenfreude": "Amusement",
+    "Peace+Serenity": "Stillness",
+    "Peace+Dread": "Acceptance",
+    "Peace+Courage": "Steadiness",
+    "Peace+Melancholy": "Contemplation",
+    "Peace+Apathy": "Calm Detachment",
+    "Peace+Zen": "Equanimity",
+    "Peace+Existential Dread": "Acceptance",
+    "Peace+Compassion": "Empathy",
+    "Peace+Justice": "Fairness",
+    "Peace+Paranoia": "Mindful Awareness",
+    "Peace+Hysteria": "Calm Amidst Chaos",
+    "Peace+Grief": "Gentle Sadness",
+    "Peace+Wonder": "Awe",
+    "Peace+Ego": "Balanced Self",
+    "Peace+Humility": "Modesty",
+    "Peace+Malice": "Neutrality",
+    "Peace+Empathy": "Understanding",
+    "Peace+Solitude": "Reflection",
+    "Peace+Loneliness": "Acceptance",
+    "Peace+Anxiety": "Composure",
+    "Peace+Relief": "Comfort",
+    "Peace+Skepticism": "Cautious Calm",
+    "Peace+Hatred": "Forgiveness",
+    "Peace+Forgiveness": "Release",
+    "Peace+Enlightenment": "Mindfulness",
+    "Peace+Ennui": "Peaceful Rest",
+    "Peace+Vengeance": "Letting Go",
+    "Peace+Ambition": "Focused Calm",
+    "Peace+Burnout": "Recovery",
+    "Peace+Infatuation": "Gentle Affection",
+    "Peace+Obsession": "Balanced Focus",
+    "Peace+Wisdom": "Insight",
+    "Peace+Cynicism": "Equanimity",
+    "Peace+Altruism": "Generosity",
+    "Peace+Nirvana": "Transcendence",
+    "Peace+Catatonia": "Stillness",
+    "Peace+Fanaticism": "Balanced Perspective",
+    "Peace+Sacrifice": "Selflessness",
+    "Peace+Bitterness": "Acceptance",
+    "Peace+Harmony": "Balance",
+    "Peace+Tyranny": "Calm Resistance",
+    "Peace+Anarchy": "Peaceful Defiance",
+    "Peace+Utopia": "Ideal Calm",
+    "Peace+Dystopia": "Acceptance",
+    "Peace+The Hero": "Steady Resolve",
+    "Peace+The Martyr": "Peaceful Sacrifice",
+    "Peace+The Sage": "Wise Calm",
+    "Peace+The Fool": "Playful Serenity",
+    "Peace+Entropy": "Acceptance",
+    "Peace+Singularity": "Clarity",
+    "Peace+Agape": "Love",
+    "Peace+Stoicism": "Composure",
+    "Peace+Nihilism": "Acceptance",
+    "Peace+Absurdism": "Amusement",
+    "Peace+Grit": "Patient Perseverance",
+    "Peace+Grace": "Poise",
+    "Peace+Terror": "Calm Courage",
+    "Peace+Mercy": "Compassion",
+    "Peace+Solace": "Comfort",
+    "Peace+Trauma": "Healing",
+    "Peace+Devotion": "Steadfastness",
+    "Peace+Boredom": "Calm Patience",
+    "Peace+Restlessness": "Gentle Motion",
+    "Peace+Fury": "Composure",
+    "Peace+Lust": "Gentle Desire",
+    "Peace+Gluttony": "Mindful Indulgence",
+    "Peace+Greed": "Contentment",
+    "Peace+Sloth": "Rest",
+    "Peace+Wrath": "Forgiveness",
+    "Peace+Envy": "Understanding",
+    "Peace+Chastity": "Purity",
+    "Peace+Temperance": "Balance",
+    "Peace+Charity": "Generosity",
+    "Peace+Diligence": "Focused Effort",
+    "Peace+Patience": "Endurance",
+    "Peace+Kindness": "Compassion",
+    "Peace+Spite": "Tolerance",
+    "Peace+Guilt": "Acceptance",
+    "Peace+Shame": "Forgiveness",
+    "Peace+Phobia": "Calmness",
+    "Peace+Superstition": "Rational Calm",
+    "Peace+Bliss": "Joyful Peace",
+    "Peace+Agony": "Relief",
+    "Peace+Tension": "Relaxation",
+    "Peace+Catharsis": "Release",
+    "Peace+Epiphany": "Clarity",
+    "Peace+Amnesia": "Forgetfulness",
+    "Peace+Frenzy": "Centered Calm",
+    "Peace+Megalomania": "Balance",
+    "Peace+Delirium": "Clarity",
+    "Peace+Faith": "Trust",
+    "Peace+Self-Loathing": "Acceptance",
+    "Disgust+Fear": ["Horror", "Paranoia"],
+    "Anger+Disgust": ["Contempt", "Loathing"],
+    "Disgust+Sadness": ["Remorse", "Misery"],
+    "Disgust+Surprise": ["Revulsion", "Appalment"],
+    "Fear+Surprise": ["Alarm", "Panic"],
+    "Joy+Surprise": ["Delight", "Amazement"],
+    "Sadness+Surprise": ["Disappointment", "Dismay"],
+    "Fear+Trust": ["Submission", "Anxiety"],
+    "Anticipation+Trust": ["Hope", "Reliance"],
+    "Sadness+Trust": ["Vulnerability", "Resignation"],
+    "Anger+Anticipation": ["Vengeance", "Impatience"],
+    "Anticipation+Joy": ["Optimism", "Excitement"],
+    "Anticipation+Fear": ["Dread", "Suspense"],
+    "Fear+Pride": ["Insecurity", "Defensiveness"],
+    "Pride+Sadness": ["Humiliation", "Shame"],
+    "Pride+Trust": ["Loyalty", "Brotherhood"],
+    "Melancholy+Peace": ["Acceptance", "Nostalgia"],
+    "Anger+Melancholy": ["Bitterness", "Resentment"],
+    "Anger+Love": ["Jealousy", "Possessiveness"],
+    "Fear+Love": ["Desperation", "Overprotection"],
+    "Love+Sadness": ["Grief", "Longing"],
+    "Horror+Surprise": ["Shock", "Trauma"],
+    "Horror+Peace": ["Morbid Curiosity", "Macabre"],
+    "Fear+Pride": ["Insecurity", "Defensiveness"],
+    "Pride+Sadness": ["Humiliation", "Shame"],
+    "Pride+Trust": ["Loyalty", "Brotherhood"],
+    "Melancholy+Peace": ["Acceptance", "Nostalgia"],
+    "Anger+Melancholy": ["Bitterness", "Resentment"],
+    "Anger+Love": ["Jealousy", "Possessiveness"],
+    "Fear+Love": ["Desperation", "Overprotection"],
+    "Love+Sadness": ["Grief", "Longing"],
+    "Horror+Surprise": ["Shock", "Trauma"],
+    "Horror+Peace": ["Morbid Curiosity", "Macabre"],
+    "Insecurity+Jealousy": ["Paranoia", "Toxicity"],
+    "Acceptance+Nostalgia": ["Wisdom", "Closure"],
+    "Grief+Shock": ["Numbness", "Denial"],
+    "Bitterness+Paranoia": ["Delusion", "Vindictiveness"],
+    "Loyalty+Overprotection": ["Zealotry", "Martyrdom"],
+    "Desperation+Hope": ["Faith", "Frenzy"],
+    "Numbness+Peace": ["Apathy", "Dissociation"],
+    "Closure+Wisdom": ["Enlightenment", "Transcendence"],
+    "Vindictiveness+Forgiveness": ["Redemption", "Spiteful Peace"],
+    "Ego+Apathy": ["Narcissistic Boredom", "Detachment"],
+    "Skepticism+Curiosity": ["Investigation", "Discovery"],
+    "Ambition+Fear": ["Cautionary Courage", "Anxiety"],
+    "Vulnerability+Strength": ["Resilience", "Empowerment"],
+    "Guilt+Anger": ["Self-Punishment", "Revenge"],
+    "Solitude+Optimism": ["Self-Reliance", "Hubris"],
+    "Dread+Hope": ["Tension", "Anticipation"],
+    "Awe+Doubt": ["Wonder", "Humility"],
+    "Numbness+Pride": ["Stoicism", "Indifference"],
+    "Loneliness+Compassion": ["Sensitivity", "Burnout"],
+    "Ego+Submission": ["Humbling", "Mastery"],
+    "Insecurity+Faith": ["Trust", "Dependency"],
+    "Suspicion+Love": ["Obsession", "Protection"],
+    "Anticipation+Silence": "Expectation",
+    "Anticipation+Solitude": "Introspection",
+    "Anticipation+Catastrophe": "Survivor Guilt",
+    "Anticipation+Entropy": "Inevitability",
+    "Anticipation+Virtue": "Idealism",
+    "Anticipation+Hedonism": "Excitement",
+    "Anticipation+Nihilism": "Challenge", 
+    "Anticipation+Loneliness": "Longing",
+    "Anticipation+Doubt": "Tension",
+    "Anticipation+Insecurity": "Anxiety",
+    "Peace+Vanity": "Hollow Tranquility",
+    "Peace+Arrogance": "Condescension",
+    "Peace+Carnage": "Stability After Shock", 
+    "Peace+Curiosity": "Open-minded Calm",
+    "Peace+Envy": "Repressed Insecurity",
+    "Peace+Restlessness": "Frustration Masked as Calm",
+    "Loyalty+Trauma": ["Devotion", "Dissociation"],
+    "Ego+Anticipation": ["Grandiosity", "Hubris"],
+    "Melancholy+Peace": ["Solitude", "Acceptance"], 
+    "Serenity+Fear": ["Calm Courage", "Alertness"],
+    "Anticipation+Peace": "Serendipity",
+    "Peace+Optimism": "Confidence", 
+    "Joy+Innocence": "Purity",
+    "Joy+Sincerity": "Sincerity",
+    "Joy+Fervor": "Passion",
+    "Joy+Brevity": "Briefness",
+    "Joy+Depth": "Understanding",
+    "Joy+Height": "Awe",
+    "Joy+Light": "Illumination",
+    "Joy+Weight": "Burden of Joy",
+    "Joy+Silence": "Contentment",
+    "Joy+Noise": "Disruption",
+    "Joy+Memory": "Recollection",
+    "Joy+Forgetting": "Amnesia",
+    "Joy+Dreaming": "Lucidity",
+    "Joy+Reality": "Wonder",
+    "Joy+Fantasy": "Daydreaming",
+    "Joy+Logic": "Reasoned Happiness",
+    "Joy+Intuition": "Hunch",
+    "Joy+Instinct": "Primal Joy",
+    "Joy+Cultivation": "Gardening of Soul",
+    "Joy+Chaos": "Euphoria",
+    "Joy+Order": "Stability in Joy",
+    "Joy+Cruelty": "Dark Delight",
+    "Joy+Mercy": "Benevolence",
+    "Joy+Sorrow": "Compassion",
+    "Joy+Regret": "Learning",
+    "Joy+Pain": "Catharsis",
+    "Joy+Loss": "Grief Management",
+    "Joy+Gain": "Gratitude",
+    "Joy+Time": "Patience",
+    "Joy+Space": "Openness",
+    "Joy+Sorrow": "Resilience",
+    "Joy+Worry": "Anxiety Release",
+    "Joy+Fear": "Courageous Joy",
+    "Joy+Doubt": "Faith in Joy",
+    "Joy+Hope": "Optimism",
+    "Joy+Love": "Adoration",
+    "Joy+Hatred": "Contradiction",
+    "Joy+Anger": "Passionate Fire",
+    "Joy+Sadness": "Healing Melancholy",
+    "Sadness+Weariness": "Fatigue",
+    "Sadness+Tears": "Release",
+    "Sadness+Sobbing": "Sorrow",
+    "Sadness+Crying": "Purge",
+    "Sadness+Fondness": "Nostalgia Deepening",
+    "Sadness+Numbness": "Emotional Detachment",
+    "Sadness+Acceptance": "Letting Go",
+    "Sadness+Rejection": "Isolation",
+    "Sadness+Loneliness": "Solitude of Heart",
+    "Sadness+Fear": "Apprehension",
+    "Sadness+Anger": "Depression",
+    "Sadness+Boredom": "Existential Void",
+    "Sadness+Curiosity": "Despairing Inquiry",
+    "Sadness+Grief": "Mourning",
+    "Sadness+Love": "Heartbreak",
+    "Sadness+Wishes": "Regret",
+    "Sadness+Memory": "Reminiscence",
+    "Sadness+Time": "Aging Sorrow",
+    "Sadness+Fate": "Resignation",
+    "Sadness+Chaos": "Confusion of Heart",
+    "Sadness+Order": "Cultivated Grief",
+    "Anger+Power": "Dominance",
+    "Anger+Vulnerability": "Defense Mechanism",
+    "Anger+Fear": "Paranoia",
+    "Anger+Hatred": "Rage",
+    "Anger+Love": "Protectiveness",
+    "Anger+Worry": "Frustration",
+    "Anger+Joy": "Playful Rebellion",
+    "Anger+Sorrow": "Bitterness",
+    "Anger+Guilt": "Self-Loathing",
+    "Anger+Injustice": "Righteous Fury",
+    "Anger+Frustration": "Explosiveness",
+    "Anger+Calm": "Suppressing Rage",
+    "Anger+Peace": "Inner Conflict",
+    "Anger+Submission": "Resentment",
+    "Anger+Control": "Restraint",
+    "Anger+Loss": "Desperation",
+    "Fear+Darkness": "Dread",
+    "Fear+Light": "Relief",
+    "Fear+Unknown": "Insecurity",
+    "Fear+Known": "Apprehension",
+    "Fear+High": "Vertigo",
+    "Fear+Low": "Depression of Spirit",
+    "Fear+Pain": "Disgust at Threat",
+    "Fear+Love": "Anxiety in Relationship",
+    "Fear+Guilt": "Remorseful Fear",
+    "Fear+Anger": "Fighting Back",
+    "Fear+Sadness": "Melancholy Apprehension",
+    "Fear+Joy": "Adrenaline Rush",
+    "Fear+Suspense": "Tension",
+    "Fear+Chaos": "Panics",
+    "Fear+Order": "Compliance Fear",
+    "Fear+Nature": "Instinct",
+    "Fear+Technology": "Dystopian Anxiety",
+    "Surprise+Fascination": "Wonder",
+    "Surprise+Fear": "Startle Response",
+    "Surprise+Joy": "Delight",
+    "Surprise+Sadness": "Loss of Expectation",
+    "Surprise+Anger": "Betrayal Shock",
+    "Surprise+Disgust": "Horror",
+    "Surprise+Anticipation": "Realization",
+    "Disgust+Fear": "Revulsion",
+    "Disgust+Joy": "Cynical Hedonism",
+    "Disgust+Sadness": "Self-Loathing",
+    "Disgust+Anger": "Contemptuous Wrath",
+    "Disgust+Trust": "Mistrust",
+    "Disgust+Curiosity": "Scientific Inquiry",
+    "Disgust+Peace": "Isolation",
+    "Disgust+Wonder": "Aversion to Beauty",
+    "Trust+Fear": "Vulnerability",
+    "Trust+Love": "Intimacy",
+    "Trust+Sadness": "Gentle Submission",
+    "Trust+Joy": "Blissful Confidence",
+    "Trust+Anger": "Righteous Cause",
+    "Trust+Disgust": "Betrayal Trauma",
+    "Trust+Anticipation": "Expectation",
+    "Trust+Wonder": "Openness",
+    "Anticipation+Darkness": "Dread",
+    "Anticipation+Light": "Clarity of Future",
+    "Anticipation+Hope": "Faith",
+    "Anticipation+Despair": "Premonition",
+    "Anticipation+Chaos": "Uncertainty",
+    "Anticipation+Order": "Planning",
+    "Anticipation+Silence": "Quiet Waiting",
+    "Anticipation+Sound": "Alertness",
+    "Anticipation+Cold": "Tension",
+    "Anticipation+Heat": "Anticipation of Fire",
+    "Anticipation+Travel": "Excitement",
+    "Anticipation+Rest": "Readiness",
+    "Serenity+Fear": "Prudent Calm",
+    "Serenity+Anger": "Forgiveness",
+    "Serenity+Joy": "Ecstasy",
+    "Serenity+Sadness": "Melancholy Acceptance",
+    "Serenity+Disgust": "Clean Rejection",
+    "Serenity+Anticipation": "Expectation of Peace",
+    "Solitude+Fear": "Vigilance",
+    "Solitude+Joy": "Freedom",
+    "Solitude+Sadness": "Reflective Grief",
+    "Solitude+Anger": "Internal Storm",
+    "Solitude+Peace": "Sanctuary",
+    "Solitude+Chaos": "Confusion of Self",
+    "Melancholy+Light": "Hopefulness",
+    "Melancholy+Darkness": "Depression",
+    "Melancholy+Joy": "Bittersweet Balance",
+    "Melancholy+Sadness": "Deep Grief",
+    "Melancholy+Anticipation": "Yearning",
+    "Melancholy+Time": "Longing",
+    "Nostalgia+Loss": "Regret",
+    "Nostalgia+Memory": "Remembrance",
+    "Nostalgia+Hope": "Reconstruction",
+    "Nostalgia+Pain": "Healing Scars",
+    "Wisdom+Fear": "Caution",
+    "Wisdom+Joy": "Contentment",
+    "Wisdom+Anger": "Judgment",
+    "Wisdom+Sadness": "Acceptance",
+    "Wisdom+Peace": "Enlightenment",
+    "Wisdom+Anticipation": "Strategy",
+    "Grief+Love": "Devotion",
+    "Grief+Loss": "Empty Heart",
+    "Grief+Time": "Adaptation",
+    "Grief+Memory": "Haunting",
+    "Hope+Fear": "Apprehensive Hope",
+    "Hope+Joy": "Excitement",
+    "Hope+Sadness": "Optimistic Grief",
+    "Hope+Peace": "Serenity of Purpose",
+    "Hope+Anger": "Righteous Cause",
+    "Compassion+Sorrow": "Sympathy",
+    "Compassion+Pain": "Empathy",
+    "Compassion+Love": "Altruism",
+    "Compassion+Peace": "Harmony with Self",
+    "Compassion+Fear": "Protective Instinct",
+    "Faith+Worry": "Anxiety of Purpose",
+    "Faith+Joy": "Gratitude",
+    "Faith+Trust": "Reliance",
+    "Faith+Anger": "Passion for Truth",
+    "Faith+Sorrow": "Penitence",
+    "Catharsis+Pain": "Relief",
+    "Catharsis+Joy": "Elation",
+    "Catharsis+Fear": "Courage to Face",
+    "Catharsis+Sadness": "Purge of Tears",
+    "Catharsis+Anger": "Release of Rage",
+    "Zen+Peace": "Tranquility",
+    "Zen+Fear": "Mindful Alertness",
+    "Zen+Joy": "Blissful Stillness",
+    "Zen+Sadness": "Detached Grief",
+    "Zen+Anticipation": "Mindful Waiting",
+    "Sloth+Peace": "Lethargy",
+    "Sloth+Anger": "Resentful Stagnation",
+    "Sloth+Fear": "Avoidance",
+    "Sloth+Sadness": "Melancholy Inertia",
+    "Pride+Joy": "Triumph",
+    "Pride+Fear": "Insecurity Masked",
+    "Pride+Anger": "Vindication",
+    "Pride+Sadness": "Shameful Regret",
+    "Pride+Peace": "Dignified Serenity",
+    "Humility+Joy": "Modesty",
+    "Humility+Sorrow": "Penitence",
+    "Humility+Anger": "Respect",
+    "Humility+Fear": "Honesty",
+    "Ambition+Pain": "Determination",
+    "Ambition+Joy": "Euphoria of Success",
+    "Ambition+Fear": "Risk Aversion",
+    "Ambition+Sadness": "Regret of Missed Opportunities",
+    "Ambition+Peace": "Quiet Ambition",
+    "Envy+Worry": "Jealousy",
+    "Envy+Sadness": "Resignation",
+    "Envy+Joy": "Ingratitude",
+    "Envy+Anger": "Rancor",
+    "Envy+Fear": "Anxiety of Inadequacy",
+    "Curiosity+Wonder": "Discovery",
+    "Curiosity+Fear": "Apprehension",
+    "Curiosity+Joy": "Playfulness",
+    "Curiosity+Sorrow": "Desire for Truth",
+    "Curiosity+Anticipation": "Investigation",
+    "Innocence+Peace": "Purity",
+    "Innocence+Sadness": "Helplessness",
+    "Innocence+Joy": "Wonderful Naivety",
+    "Innocence+Anger": "Unearned Wrath",
+    "Innocence+Anticipation": "Childlike Hope",
+    "Vulnerability+Fear": "Precarity",
+    "Vulnerability+Love": "Intimacy",
+    "Vulnerability+Joy": "Lightness",
+    "Vulnerability+Sorrow": "Heartbreak",
+    "Vulnerability+Peace": "Safety in Others",
+    "Isolation+Fear": "Paranoia",
+    "Isolation+Joy": "Solitary Happiness",
+    "Isolation+Sadness": "Alone in Grief",
+    "Isolation+Anger": "Self-Directed Wrath",
+    "Isolation+Peace": "Detachment",
+    "Resilience+Pain": "Overcoming",
+    "Resilience+Joy": "Strength",
+    "Resilience+Sadness": "Adaptation",
+    "Resilience+Anticipation": "Confidence in Future",
+    "Resilience+Peace": "Inner Stability",
+    "Optimism+Pain": "Growth",
+    "Optimism+Joy": "Elation",
+    "Optimism+Fear": "Courageous Hope",
+    "Optimism+Sadness": "Finding Silver Lining",
+    "Optimism+Anger": "Reframing Frustration",
+    "Bliss+Joy": "Rapture",
+    "Bliss+Peace": "Euphoria",
+    "Bliss+Fear": "Transcendence",
+    "Bliss+Sorrow": "Contradictory Joy",
+    "Bliss+Love": "Adoration",
+    "Guilt+Sadness": "Remorse",
+    "Guilt+Anger": "Self-Hatred",
+    "Guilt+Fear": "Anxiety",
+    "Guilt+Joy": "Hypocrisy",
+    "Guilt+Peace": "Acceptance of Fault",
+    "Shame+Sadness": "Depression",
+    "Shame+Anger": "Rage at Self",
+    "Shame+Fear": "Avoidance",
+    "Shame+Joy": "Hidden Sorrow",
+    "Shame+Peace": "Quiet Despair",
+    "Self-Control+Joy": "Discipline",
+    "Self-Control+Anger": "Restraint",
+    "Self-Control+Sorrow": "Endurance",
+    "Self-Control+Fear": "Calm Bravery",
+    "Self-Control+Peace": "Serenity of Mind",
+    "Doubt+Worry": "Anxiety",
+    "Doubt+Fear": "Paranoia",
+    "Doubt+Joy": "Insecurity",
+    "Doubt+Sadness": "Despair",
+    "Doubt+Anger": "Rationalization of Hatred",
+    "Regret+Sorrow": "Pentiment",
+    "Regret+Worry": "Wistfulness",
+    "Regret+Joy": "Bittersweet Memory",
+    "Regret+Anger": "Righteous Anger at Self",
+    "Regret+Peace": "Acceptance of Past",
+    "Forgiveness+Love": "Compassion",
+    "Forgiveness+Sorrow": "Healing",
+    "Forgiveness+Pain": "Release",
+    "Forgiveness+Joy": "Gratitude",
+    "Forgiveness+Fear": "Trust Restored",
+    "Rage+Anger": "Explosion",
+    "Rage+Fear": "Defensive Aggression",
+    "Rage+Sadness": "Bitterness",
+    "Rage+Joy": "Vengeful Delight",
+    "Rage+Peace": "Suppressed Fury",
+    "Hatred+Anger": "Hostility",
+    "Hatred+Sadness": "Despair for Enemies",
+    "Hatred+Joy": "Schadenfreude",
+    "Hatred+Fear": "Suspicion",
+    "Hatred+Peace": "Cold War Mentality",
+    "Indifference+Peace": "Apathy",
+    "Indifference+Fear": "Denial",
+    "Indifference+Anger": "Numb Anger",
+    "Indifference+Sadness": "Emotional Numbness",
+    "Indifference+Joy": "Disinterest",
+    "Empathy+Sorrow": "Sympathy",
+    "Empathy+Pain": "Resonance",
+    "Empathy+Fear": "Protection of Others",
+    "Empathy+Joy": "Celebration with Others",
+    "Empathy+Anger": "Shared Righteousness",
+    "Skepticism+Worry": "Anxiety over Truth",
+    "Skepticism+Fear": "Paranoia",
+    "Skepticism+Anger": "Distrust",
+    "Skepticism+Joy": "Irreverence",
+    "Skepticism+Sadness": "Melancholy Doubt",
+    "Awe+Wonder": "Adoration",
+    "Awe+Fear": "Sublime Terror",
+    "Awe+Joy": "Bliss",
+    "Awe+Anger": "Reverent Fury",
+    "Awe+Sadness": "Deep Reflection",
+    "Despair+Sorrow": "Hopelessness",
+    "Despair+Fear": "Terror",
+    "Despair+Anger": "Suicidal Rage",
+    "Despair+Joy": "Ironic Tragedy",
+    "Despair+Peace": "Surrender to Fate",
+    "Numbness+Sadness": "Depression Masked as Calm",
+    "Numbness+Anger": "Silent Resentment",
+    "Numbness+Fear": "Dissociation",
+    "Numbness+Joy": "Emotional Void",
+    "Numbness+Peace": "Detachment",
+    "Tranquility+Peace": "Stillness",
+    "Tranquility+Anger": "Suppressed Violence",
+    "Tranquility+Sadness": "Quiet Grief",
+    "Tranquility+Joy": "Happiness in Silence",
+    "Tranquility+Fear": "Calm Alertness",
+    "Tension+Worry": "Anxiety",
+    "Tension+Anger": "Impending Conflict",
+    "Tension+Fear": "Stress",
+    "Tension+Joy": "Nervous Excitement",
+    "Tension+Sadness": "Apprehensive Grief",
+    "Aliveness+Joy": "Vitality",
+    "Aliveness+Sorrow": "Depth of Soul",
+    "Aliveness+Anger": "Force",
+    "Aliveness+Fear": "Awareness",
+    "Aliveness+Peace": "Harmony",
+    "Death+Sadness": "Grief",
+    "Death+Fear": "Mortality Anxiety",
+    "Death+Joy": "Tragedy of Happiness",
+    "Death+Anger": "Resentment against Fate",
+    "Death+Peace": "Acceptance of End",
+    "Memory+Worry": "Reminiscence with Guilt",
+    "Memory+Fear": "Traumatic Recall",
+    "Memory+Joy": "Nostalgia",
+    "Memory+Anger": "Grudges",
+    "Memory+Sadness": "Melancholy Reflection",
+    "Time+Worry": "Impatience",
+    "Time+Fear": "Mortality Worry",
+    "Time+Joy": "Urgency of Joy",
+    "Time+Anger": "Frustration",
+    "Time+Sadness": "Regret",
+    "Space+Worry": "Isolation",
+    "Space+Fear": "Vastness Anxiety",
+    "Space+Joy": "Freedom",
+    "Space+Anger": "Rebellious Distance",
+    "Space+Sadness": "Loneliness in Vastness",
+    "Chaos+Worry": "Disorientation",
+    "Chaos+Fear": "Panic",
+    "Chaos+Joy": "Euphoria of Freedom",
+    "Chaos+Anger": "Destructive Fury",
+    "Chaos+Sadness": "Confused Grief",
+    "Order+Worry": "Perfectionism",
+    "Order+Fear": "Control Anxiety",
+    "Order+Joy": "Satisfaction",
+    "Order+Anger": "Frustration of Rigidity",
+    "Order+Sadness": "Disciplined Grief",
+    "Creation+Worry": "Imperfection Anxiety",
+    "Creation+Fear": "Perfectionism",
+    "Creation+Joy": "Inspiration",
+    "Creation+Anger": "Passionate Artistry",
+    "Creation+Sadness": "Creative Depression",
+    "Destruction+Worry": "Guilt of Action",
+    "Destruction+Fear": "Recklessness",
+    "Destruction+Joy": "Schadenfreude",
+    "Destruction+Anger": "Retaliation",
+    "Destruction+Sadness": "Melancholy of Loss",
+    "Protection+Worry": "Anxiety over Safety",
+    "Protection+Fear": "Guardianship",
+    "Protection+Joy": "Warmth",
+    "Protection+Anger": "Defensive Hostility",
+    "Protection+Sadness": "Empathic Burden",
+    "Love+Worry": "Anxious Attachment",
+    "Love+Fear": "Vulnerability",
+    "Love+Joy": "Ecstasy",
+    "Love+Anger": "Passion/Jealousy",
+    "Love+Sadness": "Longing",
+    "Betrayal+Worry": "Suspicion",
+    "Betrayal+Fear": "Mistrust",
+    "Betrayal+Joy": "Bitter Victory",
+    "Betrayal+Anger": "Rage",
+    "Betrayal+Sadness": "Heartbreak",
+    "Rejection+Worry": "Insecurity",
+    "Rejection+Fear": "Abandonment Anxiety",
+    "Rejection+Joy": "Pride in Self-Worth",
+    "Rejection+Anger": "Resentment",
+    "Rejection+Sadness": "Depression",
+    "Acceptance+Worry": "Peaceful Acceptance of Risk",
+    "Acceptance+Fear": "Trust over Fear",
+    "Acceptance+Joy": "Serenity",
+    "Acceptance+Anger": "Letting Go of Rage",
+    "Acceptance+Sadness": "Healing",
+    "Melancholy+Fear": ["Vulnerability", "Existential Dread"],
+    "Melancholy+Anger": ["Self-Loathing", "Passive Aggression"],
+    "Anticipation+Worry": ["Stress", "Excitement over Future Threat"],
+    "Peace+Sorrow": ["Nostalgic Solitude", "Quiet Grief"],
+    "Fear+Vulnerability": ["Paranoia", "Anxious Attachment"],
+    "Joy+Insecurity": ["Dreaded Failure", "Hype over Success"],
+    "Sadness+Hope": ["Melancholy Hope", "Second Chances"],
+    "Anger+Pride": ["Hubris", "Righteous Confidence"],
+    "Trust+Betrayal": ["Disillusionment", "Cynicism"],
+    "Fear+Curiosity": ["Bravery of Discovery", "Risk Tolerance"],
+    "Joy+Fear": ["Adrenaline High", "Thrill Seeker"],
+    "Sadness+Anger": ["Bitter Grief", "Self-Deprecation"],
+    "Disgust+Pride": ["Condescension", "Snobbery"],
+    "Peace+Worry": ["Anxious Calm", "Apprehensive Serenity"],
+    "Hope+Fear": ["Ambivalence", "Cautious Optimism"],
+    "Regret+Innocence": ["Guilt of Naivety", "Learned Experience"],
+    "Wisdom+Fear": ["Prudence", "Judiciousness"],
+    "Ambition+Sorrow": ["Bittersweet Drive", "Desire for More"],
+    "Compassion+Worry": ["Protective Anxiety", "Careful Empathy"],
+    "Skepticism+Joy": ["Ironic Amusement", "Dry Humor"],
+    "Awe+Fear": ["Sublime Terror", "Religious Transcendence"],
+    "Despair+Love": ["Self-Sacrifice", "Devotion to Doom"],
+    "Numbness+Anger": ["Cold Anger", "Resentment Stored"],
+    "Tranquility+Worry": ["Anxious Calm", "Peaceful Unease"],
+    "Tension+Joy": ["Excitement", "Anticipatory Happiness"],
+    "Chaos+Sadness": ["Confused Grief", "Loss of Structure"],
+    "Order+Fear": ["Rigid Anxiety", "Compliance"],
+    "Creation+Worry": ["Perfectionism", "Creative Stress"],
+    "Destruction+Pride": ["Megalomania", "Power Fantasy"],
+    "Protection+Worry": ["Overprotectiveness", "Anxious Guarding"],
+    "Love+Insecurity": ["Jealousy", "Possessiveness"],
+    "Trust+Despair": ["Submissive Hopelessness", "Faith in Misery"],
+    "Rejection+Pride": ["Defensive Anger", "Proud Isolation"],
+    "Acceptance+Worry": ["Anxious Calm", "Peaceful Unease"],
+    "Hope+Sorrow": ["Melancholy Optimism", "Bittersweet Future"],
+    "Fear+Compassion": ["Protective Instinct", "Empathic Dread"],
+    "Joy+Nostalgia": ["Happy Memories", "Sweet Reminiscence"],
+    "Sadness+Curiosity": ["Seeking Meaning in Pain", "Intellectual Grief"],
+    "Anger+Sadness": ["Bitterness", "Resentment"],
+    "Disgust+Fear": ["Dread of Filth", "Health Anxiety"],
+    "Peace+Insecurity": ["Uneasy Serenity", "Vigilant Calm"],
+    "Hope+Numbness": ["Blind Faith", "Passive Optimism"],
+    "Regret+Worry": ["Ruminative Anxiety", "Guilt Trip"],
+    "Wisdom+Sadness": ["Philosophical Grief", "Acceptance of End"],
+    "Ambition+Fear": ["Cautious Ambition", "Fear of Failure"],
+    "Compassion+Anger": ["Righteous Indignation", "Protective Rage"],
+    "Skepticism+Sorrow": ["Pessimistic Wisdom", "Learned Scepticism"],
+    "Awe+Sadness": ["Tragic Beauty", "Sublime Melancholy"],
+    "Despair+Worry": ["Depression of Thought", "Anxious Hopelessness"],
+    "Numbness+Peace": ["Empty Calm", "Dissociative Tranquility"],
+    "Tranquility+Joy": "Bliss",
+    "Tension+Sorrow": ["Melancholy Tension", "Angst"],
+    "Chaos+Pride": ["Arrogant Disarray", "Mega-Confusion"],
+    "Order+Worry": ["Obsessive Compulsion", "Anxiety of Order"],
+    "Creation+Fear": ["Creative Anxiety", "Fear of Criticism"],
+    "Destruction+Sorrow": ["Grief for Lost Things", "Regretful Ruin"],
+    "Protection+Joy": "Guarded Happiness",
+    "Love+Worry": "Anxious Love",
+    "Trust+Worry": "Tentative Trust",
+    "Rejection+Fear": "Fear of Rejection",
+    "Acceptance+Sorrow": "Peaceful Mourning",
+    "Hope+Pain": "Growth through Pain",
+    "Fear+Joy": "Thrill",
+    "Regret+Peace": "At Peace with Past",
+    "Wisdom+Joy": "Contentment",
+    "Ambition+Sorrow": "Bittersweet Motivation",
+    "Compassion+Worry": "Anxious Care",
+    "Skepticism+Sadness": "Cynical Grief",
+    "Awe+Peace": "Reverent Silence",
+    "Despair+Anger": "Blind Rage",
+    "Numbness+Fear": "Dissociated Panic",
+    "Tranquility+Worry": "Anxious Calm",
+    "Tension+Sorrow": "Melancholy Tension",
+    "Chaos+Pride": "Arrogant Disarray",
+    "Order+Worry": "Obsessive Compulsion",
+    "Creation+Fear": "Creative Anxiety",
+    "Destruction+Sorrow": "Grief for Lost Things",
+    "Protection+Joy": "Guarded Happiness",
+    "Love+Worry": "Anxious Love",
+    "Trust+Worry": "Tentative Trust",
+    "Rejection+Fear": "Fear of Rejection",
+    "Acceptance+Sorrow": "Peaceful Mourning",
+    "Hope+Pain": "Growth through Pain"
+};
+
+
+let nodes = [];
+let particles = [];
+let discovered = new Set(["Joy", "Sadness", "Anger", "Fear", "Trust", "Anticipation", "Peace", "Disgust", "Surprise"]);
+let draggingNode = null;
+let offset = { x: 0, y: 0 };
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const listUI = document.getElementById('emotion-list');
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y; this.color = color;
+        this.vx = (Math.random() - 0.5) * 8;
+        this.vy = (Math.random() - 0.5) * 8;
+        this.life = 1.0;
+    }
+draw() {
+    // 1. IMMEDIATE EXIT: If name is missing or undefined, stop everything.
+    if (!this || !this.name) return; 
+
+    ctx.save();
+    
+    // 2. CHECK MERGE GLOW (with extra safety)
+    let canMerge = false;
+    if (draggingNode && draggingNode.name && draggingNode !== this) {
+        const combo = [draggingNode.name, this.name].sort();
+        const key = `${combo[0]}+${combo[1]}`;
+        if (RECIPES[key]) canMerge = true;
+    }
+
+    if (canMerge) {
+        ctx.shadowColor = "white";
+        ctx.shadowBlur = 35; 
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius + 4, 0, Math.PI * 2);
+        ctx.stroke();
+    } else {
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 15;
+    }
+
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 3. SAFE TEXT RENDERING
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.font = "bold 9px Inter, sans-serif";
+    
+    // Final safety check before calling the string method
+    const label = String(this.name || "").toUpperCase();
+    ctx.fillText(label, this.x, this.y + 3);
+    
+    ctx.restore();
+}
+}
+
+function createBurst(x, y, color) {
+    for (let i = 0; i < 30; i++) particles.push(new Particle(x, y, color));
+}
+
+function isComplete(name) {
+    for (const [recipe, result] of Object.entries(RECIPES)) {
+        if (recipe.split('+').includes(name)) {
+            const resArray = Array.isArray(result) ? result : [result];
+            if (resArray.some(r => !discovered.has(r))) return false;
+        }
+    }
+    return true;
+}
+
+function updateSidebar() {
+    listUI.innerHTML = "";
+    Array.from(discovered).sort().forEach(name => {
+        const div = document.createElement('div');
+        const done = isComplete(name);
+        const color = emotionLib[name] || "#94a3b8";
+        div.className = `emo-tag ${done ? 'complete' : ''}`;
+        div.style.backgroundColor = color;
+        div.style.color = (parseInt(color.replace('#',''),16) > 0xffffff/2) ? 'black':'white';
+        div.innerHTML = `<span>${name}</span>${done ? '<span class="tick">✔</span>':''}`;
+        div.onclick = () => spawn(name);
+        listUI.appendChild(div);
+    });
+    document.getElementById('stat-count').innerText = `${discovered.size} PATHS MAPPED`;
+}
+
+class Node {
+    constructor(x, y, name, radius = 42) {
+        this.x = x; this.y = y; this.name = name;
+        this.color = emotionLib[name] || "#94a3b8";
+        this.radius = radius; this.vx = 0; this.vy = 0;
+    }
+    update() {
+        if (this === draggingNode) return;
+        
+        // Soft pull to center
+        const dx = canvas.width/2 - this.x;
+        const dy = canvas.height/2 - this.y;
+        const dist = Math.hypot(dx, dy);
+        if(dist>120){this.vx+=dx*0.00001; this.vy+=dy*0.00001;}
+
+        // High friction for self-organizing feel
+        this.vx *= 0.85; this.vy *= 0.85;
+        this.x += this.vx; this.y += this.vy;
+
+        // Boundaries
+        if(this.x<this.radius){this.x=this.radius; this.vx*=-0.3;}
+        if(this.x>canvas.width-this.radius){this.x=canvas.width-this.radius; this.vx*=-0.3;}
+        if(this.y<this.radius){this.y=this.radius; this.vy*=-0.3;}
+        if(this.y>canvas.height-this.radius){this.y=canvas.height-this.radius; this.vy*=-0.3;}
+    }
+draw() {
+    ctx.save();
+    
+    // Check if this node can merge with the one we are currently holding
+    let canMerge = false;
+    if (draggingNode && draggingNode !== this) {
+        const combo = [draggingNode.name, this.name].sort();
+        const key = `${combo[0]}+${combo[1]}`;
+        if (RECIPES[key]) {
+            canMerge = true;
+        }
+    }
+
+    // Apply the glow effect
+    if (canMerge) {
+        ctx.shadowColor = "white"; // Bright white highlight
+        ctx.shadowBlur = 30;       // Extra large glow
+        ctx.strokeStyle = "white"; // White ring
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius + 2, 0, Math.PI * 2);
+        ctx.stroke();
+    } else {
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 15;
+    }
+
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Text label
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.font = "bold 9px Inter, sans-serif";
+    ctx.fillText(this.name.toUpperCase(), this.x, this.y + 3);
+    
+    ctx.restore();
+}
+}
+
+function blendColor(c1, c2){
+    const f1=parseInt(c1.slice(1),16), f2=parseInt(c2.slice(1),16);
+    const r=Math.round(((f1>>16)+(f2>>16))/2);
+    const g=Math.round((((f1>>8)&0xff)+((f2>>8)&0xff))/2);
+    const b=Math.round(((f1&0xff)+(f2&0xff))/2);
+    return `#${((1<<24)+r*65536+g*256+b).toString(16).slice(1)}`;
+}
+
+function spawn(name, x, y, r=42, parentColors){
+    let color = emotionLib[name] || (parentColors ? blendColor(parentColors[0], parentColors[1]) : "#94a3b8");
+    emotionLib[name] = color;
+
+    let spawnX = x || canvas.width/2;
+    let spawnY = y || canvas.height/2;
+
+    // Sidebar/Center Anti-Stacking
+    let attempts = 0;
+    while(nodes.some(n => Math.hypot(spawnX-n.x, spawnY-n.y) < (r + n.radius)) && attempts < 15) {
+        spawnX += (Math.random()-0.5) * 50;
+        spawnY += (Math.random()-0.5) * 50;
+        attempts++;
+    }
+
+    const newNode = new Node(spawnX, spawnY, name, r);
+    newNode.vx = (Math.random()-0.5)*3;
+    newNode.vy = (Math.random()-0.5)*3;
+    nodes.push(newNode);
+}
+
+function handlePointerDown(e){
+    const rect=canvas.getBoundingClientRect();
+    const x=(e.clientX||(e.touches?e.touches[0].clientX:0))-rect.left;
+    const y=(e.clientY||(e.touches?e.touches[0].clientY:0))-rect.top;
+    for(let i=nodes.length-1;i>=0;i--){
+        if(Math.hypot(x-nodes[i].x,y-nodes[i].y)<nodes[i].radius){
+            draggingNode=nodes[i];
+            offset.x=x-draggingNode.x; offset.y=y-draggingNode.y;
+            draggingNode.vx=0; draggingNode.vy=0;
+            return;
+        }
+    }
+}
+
+function handlePointerMove(e){
+    if(!draggingNode) return;
+    const r=canvas.getBoundingClientRect();
+    const x=(e.clientX||(e.touches?e.touches[0].clientX:0))-r.left;
+    const y=(e.clientY||(e.touches?e.touches[0].clientY:0))-r.top;
+    draggingNode.x=x-offset.x; draggingNode.y=y-offset.y;
+}
+
+function handlePointerUp(){
+    if(!draggingNode) return;
+    const mx = draggingNode.x;
+    const my = draggingNode.y;
+
+    for (let i = nodes.length - 1; i >= 0; i--) {
+        let other = nodes[i];
+        if (other === draggingNode) continue;
+
+        if (Math.hypot(mx - other.x, my - other.y) < (draggingNode.radius + other.radius)) {
+            const combo = [draggingNode.name, other.name].sort();
+            const key = `${combo[0]}+${combo[1]}`;
+            const result = RECIPES[key];
+
+            if (result) {
+                const parentColors = [draggingNode.color, other.color];
+                nodes.splice(i, 1);
+                nodes.splice(nodes.indexOf(draggingNode), 1);
+
+                const resultsArray = Array.isArray(result) ? result : [result];
+                resultsArray.forEach((res, index) => {
+                    const offsetX = (index * 30) - ((resultsArray.length - 1) * 15);
+                    spawn(res, mx + offsetX, my, 48, parentColors);
+                    if (!discovered.has(res)) {
+                        discovered.add(res);
+                        createBurst(mx + offsetX, my, emotionLib[res]);
+                    }
+                });
+
+                updateSidebar();
+                localStorage.setItem('psyche_v8_calm', JSON.stringify(Array.from(discovered)));
+                draggingNode = null; 
+                return;
+            }
+        }
+    }
+    draggingNode = null;
+}
+
+function loop() {
+    ctx.fillStyle = "rgba(2,6,23,0.4)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Filter and draw particles
+    particles = particles.filter(p => p && p.life > 0);
+    particles.forEach(p => p.draw());
+
+    // Repulsion Logic (unchanged, but added safety check)
+    for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+            let n1 = nodes[i], n2 = nodes[j];
+            if (!n1 || !n2 || !n1.name || !n2.name) continue; // Safety check
+            if (n1 === draggingNode || n2 === draggingNode) continue;
+
+            let dx = n2.x - n1.x, dy = n2.y - n1.y;
+            let dist = Math.hypot(dx, dy);
+            let min = n1.radius + n2.radius + 10;
+            
+            if (dist < min && dist > 0) {
+                let force = (min - dist) * 0.04;
+                let nx = dx / dist, ny = dy / dist;
+                n1.vx -= nx * force; n1.vy -= ny * force;
+                n2.vx += nx * force; n2.vy += ny * force;
+            }
+        }
+    }
+
+    // DRAWING LOOP: Iterate backwards to handle potential splices safely
+    for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        if (n && n.name) {
+            n.update();
+            n.draw();
+        }
+    }
+
+    requestAnimationFrame(loop);
+}
+
+canvas.addEventListener('mousedown',handlePointerDown);
+window.addEventListener('mousemove',handlePointerMove);
+window.addEventListener('mouseup',handlePointerUp);
+canvas.addEventListener('touchstart',e=>{e.preventDefault();handlePointerDown(e);},{passive:false});
+window.addEventListener('touchmove',e=>{e.preventDefault();handlePointerMove(e);},{passive:false});
+window.addEventListener('touchend',handlePointerUp);
+window.addEventListener('resize',()=>{canvas.width=canvas.parentElement.clientWidth; canvas.height=canvas.parentElement.clientHeight;});
+
+canvas.width=canvas.parentElement.clientWidth;
+canvas.height=canvas.parentElement.clientHeight;
+const data=localStorage.getItem('psyche_v8_calm'); if(data) discovered=new Set(JSON.parse(data));
+updateSidebar(); loop();
+
+function resetLib(){if(confirm("Reset progress?")){localStorage.clear();location.reload();}}
+</script>
+</body>
+</html>
