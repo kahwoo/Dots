@@ -413,22 +413,22 @@ const data = {
 function drawLabel(cx, cy, innerR, outerR, startAngle, endAngle, label){
   const angle = (startAngle+endAngle)/2;
   const arcLength = (endAngle-startAngle)*outerR*scale;
-  const minFont=8, maxFont=18, padding=6;
-  let fontSize=Math.min(maxFont, arcLength/(label.length*0.6));
-  if(fontSize<minFont) return;
+  const maxFont = 18, minFont = 4; // small minimum font
+  let fontSize = Math.min(maxFont, arcLength/(label.length*0.6));
+  fontSize = Math.max(fontSize, minFont); // always draw
   ctx.save();
-  const r=(innerR+outerR)/2*scale;
+  const r = (innerR + outerR)/2*scale;
   ctx.translate(cx + r*Math.cos(angle), cy + r*Math.sin(angle));
   ctx.rotate(angle);
   if(angle>Math.PI/2 && angle<3*Math.PI/2) ctx.rotate(Math.PI);
-  ctx.font=`${fontSize}px sans-serif`;
-  ctx.fillStyle="#fff";
-  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.font = `${fontSize}px sans-serif`;
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
   let text = label;
-  const maxWidth = arcLength-padding;
-  while(ctx.measureText(text).width>maxWidth && text.length>3) text=text.slice(0,-1);
-  if(text!==label) text+="…";
-  ctx.fillText(text,0,0);
+  const maxWidth = arcLength - 2;
+  while(ctx.measureText(text).width > maxWidth && text.length>3) text = text.slice(0,-1);
+  if(text !== label) text += "…";
+  ctx.fillText(text, 0, 0);
   ctx.restore();
 }
 
@@ -440,7 +440,7 @@ function drawSegment(cx, cy, innerR, outerR, startAngle, endAngle, color, label)
   ctx.lineTo(cx + innerR*Math.cos(endAngle)*scale, cy + innerR*Math.sin(endAngle)*scale);
   ctx.arc(cx, cy, innerR*scale, endAngle, startAngle, true);
   ctx.closePath();
-  ctx.fillStyle=color;
+  ctx.fillStyle = color;
   ctx.fill();
   drawLabel(cx, cy, innerR, outerR, startAngle, endAngle, label);
 }
@@ -454,11 +454,11 @@ function drawNode(node, depth, startAngle, endAngle, parentColor){
   const color = node.color || parentColor;
   if(depth>0) drawSegment(cx, cy, innerR, outerR, startAngle, endAngle, color, node.name);
   if(!node.children) return;
-  let angle=startAngle;
+  let angle = startAngle;
   const slice = (endAngle-startAngle)/node.children.length;
   node.children.forEach(child=>{
     drawNode(child, depth+1, angle, angle+slice, color);
-    angle+=slice;
+    angle += slice;
   });
 }
 
@@ -488,29 +488,27 @@ canvas.addEventListener("wheel", e=>{
 canvas.addEventListener("touchmove", e=>{
   if(e.touches.length==2){
     e.preventDefault();
-    const x0=e.touches[0].clientX, y0=e.touches[0].clientY;
-    const x1=e.touches[1].clientX, y1=e.touches[1].clientY;
+    const x0 = e.touches[0].clientX, y0 = e.touches[0].clientY;
+    const x1 = e.touches[1].clientX, y1 = e.touches[1].clientY;
     const midX = (x0+x1)/2 - width/2 - offsetX;
     const midY = (y0+y1)/2 - height/2 - offsetY;
     const dx = x0-x1, dy = y0-y1;
     const dist = Math.sqrt(dx*dx + dy*dy);
-    if(lastTouchDist!=null){
+    if(lastTouchDist != null){
       const factor = dist/lastTouchDist;
       const oldScale = scale;
       scale *= factor;
-      scale = Math.min(Math.max(scale, 0.2), 20);
+      scale = Math.min(Math.max(scale,0.2),20);
       offsetX -= midX*(scale/oldScale -1);
       offsetY -= midY*(scale/oldScale -1);
     }
     lastTouchDist = dist;
   }
 });
-canvas.addEventListener("touchend", e=>{
-  if(e.touches.length<2) lastTouchDist = null;
-});
+canvas.addEventListener("touchend", e=>{ if(e.touches.length<2) lastTouchDist=null; });
 
 // ---------------- PAN ----------------
-let isDragging=false, dragStart={x:0,y:0};
+let isDragging = false, dragStart={x:0,y:0};
 canvas.addEventListener("mousedown", e=>{ isDragging=true; dragStart={x:e.clientX, y:e.clientY}; });
 canvas.addEventListener("mousemove", e=>{
   if(isDragging){
