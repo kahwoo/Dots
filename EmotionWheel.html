@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zoomable Emotion Wheel</title>
+<style>
+body { margin:0; background:#000; overflow:hidden; font-family:sans-serif; }
+canvas { display:block; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="wheel"></canvas>
+
+<script>
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+let width, height;
+function resize() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---------------- STATE ----------------
+let scale = 1; 
+let offsetX = 0, offsetY = 0; 
+let lastTouchDist = null;
+
+// ---------------- CONFIG ----------------
+const ringWidth = 50; // smaller rings for better zoom
+const gap = 1;
+
+// ---------------- DATA (truncated placeholder) ----------------
+const data = {
+  name: "root",
+  children: [
+
+    // HAPPY (expanded heavily)
+    {
+      name: "Happy",
+      color: "#f59e0b",
+      children: [
+        {
+          name: "Playful",
+          children: [
+            { name: "Aroused" },
+            { name: "Cheeky" },
+            { name: "Mischievous" },
+            { name: "Silly" }
+          ]
+        },
+        {
+          name: "Content",
+          children: [
+            { name: "Free" },
+            { name: "Joyful" },
+            { name: "Satisfied" },
+            { name: "At Ease" }
+          ]
+        },
+        {
+          name: "Interested",
+          children: [
+            { name: "Curious" },
+            { name: "Inquisitive" },
+            { name: "Fascinated" },
+            { name: "Engaged" }
+          ]
+        },
+        {
+          name: "Proud",
+          children: [
+            { name: "Successful" },
+            { name: "Confident" },
+            { name: "Accomplished" },
+            { name: "Validated" }
+          ]
+        },
+        {
+          name: "Accepted",
+          children: [
+            { name: "Valued" },
+            { name: "Respected" },
+            { name: "Included" },
+            { name: "Belonging" }
+          ]
+        },
+        {
+          name: "Powerful",
+          children: [
+            { name: "Courageous" },
+            { name: "Creative" },
+            { name: "Bold" },
+            { name: "Capable" }
+          ]
+        },
+        {
+          name: "Peaceful",
+          children: [
+            { name: "Loving" },
+            { name: "Thankful" },
+            { name: "Serene" },
+            { name: "Calm" }
+          ]
+        },
+        {
+          name: "Trusting",
+          children: [
+            { name: "Sensitive" },
+            { name: "Intimate" },
+            { name: "Open" },
+            { name: "Safe" }
+          ]
+        },
+        {
+          name: "Optimistic",
+          children: [
+            { name: "Hopeful" },
+            { name: "Inspired" },
+            { name: "Motivated" },
+            { name: "Encouraged" }
+          ]
+        }
+      ]
+    },
+
+    // SAD (deeper emotional granularity)
+    {
+      name: "Sad",
+      color: "#4c1d95",
+      children: [
+        {
+          name: "Lonely",
+          children: [
+            { name: "Isolated" },
+            { name: "Abandoned" },
+            { name: "Disconnected" }
+          ]
+        },
+        {
+          name: "Vulnerable",
+          children: [
+            { name: "Victimized" },
+            { name: "Fragile" },
+            { name: "Exposed" }
+          ]
+        },
+        {
+          name: "Despair",
+          children: [
+            { name: "Grief" },
+            { name: "Powerless" },
+            { name: "Hopeless" }
+          ]
+        },
+        {
+          name: "Guilty",
+          children: [
+            { name: "Ashamed" },
+            { name: "Remorseful" },
+            { name: "Regretful" }
+          ]
+        },
+        {
+          name: "Depressed",
+          children: [
+            { name: "Empty" },
+            { name: "Inferior" },
+            { name: "Numb" }
+          ]
+        },
+        {
+          name: "Hurt",
+          children: [
+            { name: "Disappointed" },
+            { name: "Embarrassed" },
+            { name: "Rejected" }
+          ]
+        }
+      ]
+    },
+
+    // ANGRY (adds cognitive + social anger variants)
+    {
+      name: "Angry",
+      color: "#dc2626",
+      children: [
+        {
+          name: "Let Down",
+          children: [
+            { name: "Betrayed" },
+            { name: "Resentful" },
+            { name: "Disillusioned" }
+          ]
+        },
+        {
+          name: "Humiliated",
+          children: [
+            { name: "Disrespected" },
+            { name: "Ridiculed" },
+            { name: "Invalidated" }
+          ]
+        },
+        {
+          name: "Bitter",
+          children: [
+            { name: "Indignant" },
+            { name: "Violated" },
+            { name: "Wronged" }
+          ]
+        },
+        {
+          name: "Mad",
+          children: [
+            { name: "Furious" },
+            { name: "Jealous" },
+            { name: "Enraged" }
+          ]
+        },
+        {
+          name: "Aggressive",
+          children: [
+            { name: "Provoked" },
+            { name: "Hostile" },
+            { name: "Confrontational" }
+          ]
+        },
+        {
+          name: "Frustrated",
+          children: [
+            { name: "Infuriated" },
+            { name: "Annoyed" },
+            { name: "Blocked" }
+          ]
+        },
+        {
+          name: "Critical",
+          children: [
+            { name: "Skeptical" },
+            { name: "Dismissive" },
+            { name: "Judgmental" }
+          ]
+        }
+      ]
+    },
+
+    // FEARFUL (expanded with anxiety spectrum)
+    {
+      name: "Fearful",
+      color: "#ec4899",
+      children: [
+        {
+          name: "Scared",
+          children: [
+            { name: "Helpless" },
+            { name: "Frightened" },
+            { name: "Panicked" }
+          ]
+        },
+        {
+          name: "Anxious",
+          children: [
+            { name: "Overwhelmed" },
+            { name: "Worried" },
+            { name: "Restless" }
+          ]
+        },
+        {
+          name: "Insecure",
+          children: [
+            { name: "Inadequate" },
+            { name: "Inferior" },
+            { name: "Self-doubting" }
+          ]
+        },
+        {
+          name: "Weak",
+          children: [
+            { name: "Worthless" },
+            { name: "Insignificant" },
+            { name: "Helpless" }
+          ]
+        },
+        {
+          name: "Threatened",
+          children: [
+            { name: "Nervous" },
+            { name: "Exposed" },
+            { name: "Unsafe" }
+          ]
+        }
+      ]
+    },
+
+    // DISGUSTED (expanded with moral disgust)
+    {
+      name: "Disgusted",
+      color: "#92400e",
+      children: [
+        {
+          name: "Disapproving",
+          children: [
+            { name: "Judgmental" },
+            { name: "Embarrassed" }
+          ]
+        },
+        {
+          name: "Disappointed",
+          children: [
+            { name: "Appalled" },
+            { name: "Revolted" }
+          ]
+        },
+        {
+          name: "Awful",
+          children: [
+            { name: "Nauseated" },
+            { name: "Detestable" }
+          ]
+        },
+        {
+          name: "Repelled",
+          children: [
+            { name: "Horrified" },
+            { name: "Avoidant" }
+          ]
+        }
+      ]
+    },
+
+    // SURPRISED (adds cognitive states)
+    {
+      name: "Surprised",
+      color: "#065f46",
+      children: [
+        {
+          name: "Startled",
+          children: [
+            { name: "Shocked" },
+            { name: "Dismayed" }
+          ]
+        },
+        {
+          name: "Confused",
+          children: [
+            { name: "Perplexed" },
+            { name: "Disoriented" }
+          ]
+        },
+        {
+          name: "Amazed",
+          children: [
+            { name: "Awe" },
+            { name: "Wonder" }
+          ]
+        },
+        {
+          name: "Excited",
+          children: [
+            { name: "Eager" },
+            { name: "Energetic" }
+          ]
+        }
+      ]
+    },
+
+    // BAD (expanded modern states)
+    {
+      name: "Bad",
+      color: "#6b21a8",
+      children: [
+        {
+          name: "Tired",
+          children: [
+            { name: "Sleepy" },
+            { name: "Burnt Out" },
+            { name: "Drained" }
+          ]
+        },
+        {
+          name: "Stressed",
+          children: [
+            { name: "Overwhelmed" },
+            { name: "Out of control" },
+            { name: "Pressured" }
+          ]
+        },
+        {
+          name: "Busy",
+          children: [
+            { name: "Rushed" },
+            { name: "Distracted" },
+            { name: "Overloaded" }
+          ]
+        },
+        {
+          name: "Bored",
+          children: [
+            { name: "Apathetic" },
+            { name: "Indifferent" },
+            { name: "Unstimulated" }
+          ]
+        }
+      ]
+    }
+
+  ]
+};
+
+// ---------------- LABEL ----------------
+function drawLabel(cx, cy, innerR, outerR, startAngle, endAngle, label){
+  const angle = (startAngle+endAngle)/2;
+  const arcLength = (endAngle-startAngle)*outerR*scale;
+  const minFont=8, maxFont=18, padding=6;
+  let fontSize=Math.min(maxFont, arcLength/(label.length*0.6));
+  if(fontSize<minFont) return;
+  ctx.save();
+  const r=(innerR+outerR)/2*scale;
+  ctx.translate(cx + r*Math.cos(angle), cy + r*Math.sin(angle));
+  ctx.rotate(angle);
+  if(angle>Math.PI/2 && angle<3*Math.PI/2) ctx.rotate(Math.PI);
+  ctx.font=`${fontSize}px sans-serif`;
+  ctx.fillStyle="#fff";
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  let text = label;
+  const maxWidth = arcLength-padding;
+  while(ctx.measureText(text).width>maxWidth && text.length>3) text=text.slice(0,-1);
+  if(text!==label) text+="…";
+  ctx.fillText(text,0,0);
+  ctx.restore();
+}
+
+// ---------------- SEGMENT ----------------
+function drawSegment(cx, cy, innerR, outerR, startAngle, endAngle, color, label){
+  ctx.beginPath();
+  ctx.moveTo(cx + innerR*Math.cos(startAngle)*scale, cy + innerR*Math.sin(startAngle)*scale);
+  ctx.arc(cx, cy, outerR*scale, startAngle, endAngle);
+  ctx.lineTo(cx + innerR*Math.cos(endAngle)*scale, cy + innerR*Math.sin(endAngle)*scale);
+  ctx.arc(cx, cy, innerR*scale, endAngle, startAngle, true);
+  ctx.closePath();
+  ctx.fillStyle=color;
+  ctx.fill();
+  drawLabel(cx, cy, innerR, outerR, startAngle, endAngle, label);
+}
+
+// ---------------- RECURSIVE DRAW ----------------
+function drawNode(node, depth, startAngle, endAngle, parentColor){
+  const cx = width/2 + offsetX;
+  const cy = height/2 + offsetY;
+  const innerR = depth*ringWidth;
+  const outerR = innerR + ringWidth-gap;
+  const color = node.color || parentColor;
+  if(depth>0) drawSegment(cx, cy, innerR, outerR, startAngle, endAngle, color, node.name);
+  if(!node.children) return;
+  let angle=startAngle;
+  const slice = (endAngle-startAngle)/node.children.length;
+  node.children.forEach(child=>{
+    drawNode(child, depth+1, angle, angle+slice, color);
+    angle+=slice;
+  });
+}
+
+// ---------------- MAIN LOOP ----------------
+function draw(){
+  ctx.clearRect(0,0,width,height);
+  drawNode(data, 0, -Math.PI/2, Math.PI*1.5, null);
+  requestAnimationFrame(draw);
+}
+draw();
+
+// ---------------- SCROLL ZOOM (cursor-centered) ----------------
+canvas.addEventListener("wheel", e=>{
+  e.preventDefault();
+  const zoomFactor = 1.1;
+  const mouseX = e.clientX - width/2 - offsetX;
+  const mouseY = e.clientY - height/2 - offsetY;
+  const oldScale = scale;
+  if(e.deltaY<0) scale *= zoomFactor;
+  else scale /= zoomFactor;
+  scale = Math.min(Math.max(scale, 0.2), 20); // allow deep zoom
+  offsetX -= mouseX*(scale/oldScale -1);
+  offsetY -= mouseY*(scale/oldScale -1);
+});
+
+// ---------------- PINCH ZOOM (centered) ----------------
+canvas.addEventListener("touchmove", e=>{
+  if(e.touches.length==2){
+    e.preventDefault();
+    const x0=e.touches[0].clientX, y0=e.touches[0].clientY;
+    const x1=e.touches[1].clientX, y1=e.touches[1].clientY;
+    const midX = (x0+x1)/2 - width/2 - offsetX;
+    const midY = (y0+y1)/2 - height/2 - offsetY;
+    const dx = x0-x1, dy = y0-y1;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if(lastTouchDist!=null){
+      const factor = dist/lastTouchDist;
+      const oldScale = scale;
+      scale *= factor;
+      scale = Math.min(Math.max(scale, 0.2), 20);
+      offsetX -= midX*(scale/oldScale -1);
+      offsetY -= midY*(scale/oldScale -1);
+    }
+    lastTouchDist = dist;
+  }
+});
+canvas.addEventListener("touchend", e=>{
+  if(e.touches.length<2) lastTouchDist = null;
+});
+
+// ---------------- PAN ----------------
+let isDragging=false, dragStart={x:0,y:0};
+canvas.addEventListener("mousedown", e=>{ isDragging=true; dragStart={x:e.clientX, y:e.clientY}; });
+canvas.addEventListener("mousemove", e=>{
+  if(isDragging){
+    offsetX += e.clientX - dragStart.x;
+    offsetY += e.clientY - dragStart.y;
+    dragStart={x:e.clientX, y:e.clientY};
+  }
+});
+canvas.addEventListener("mouseup", e=>{ isDragging=false; });
+canvas.addEventListener("mouseleave", e=>{ isDragging=false; });
+
+// ---------------- TOUCH PAN ----------------
+let lastTouchPos = null;
+canvas.addEventListener("touchstart", e=>{
+  if(e.touches.length==1) lastTouchPos={x:e.touches[0].clientX, y:e.touches[0].clientY};
+});
+canvas.addEventListener("touchmove", e=>{
+  if(e.touches.length==1 && lastTouchPos){
+    offsetX += e.touches[0].clientX - lastTouchPos.x;
+    offsetY += e.touches[0].clientY - lastTouchPos.y;
+    lastTouchPos={x:e.touches[0].clientX, y:e.touches[0].clientY};
+  }
+});
+canvas.addEventListener("touchend", e=>{ lastTouchPos=null; });
+
+</script>
+</body>
+</html>
